@@ -23,7 +23,8 @@ Your identity is just a key pair that lives on your own device.
 
 </div>
 
-<img src="assets/01.webp" alt="Archne" width="480" />
+<img src="assets/01.webp" alt="Archne" width="240" /> <img src="assets/04.webp" alt="Archne" width="240" />
+<img src="assets/02.webp" alt="Archne" width="240" /> <img src="assets/03.webp" alt="Archne" width="240" />
 
 ---
 
