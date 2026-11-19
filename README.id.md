@@ -23,6 +23,9 @@ Identitasmu cuma sepasang kunci di perangkatmu sendiri.
 
 </div>
 
+<img src="assets/01.webp" alt="Archne" width="240" /> <img src="assets/04.webp" alt="Archne" width="240" />
+<img src="assets/02.webp" alt="Archne" width="240" /> <img src="assets/03.webp" alt="Archne" width="240" />
+
 ---
 
 ## Kenapa Archne?
