@@ -1,0 +1,71 @@
+/* Pengaturan (Step 2f, dirapikan v0.23.1): tombol gear + dialog berbagian. Terpisah dari archne-app.css supaya pengecualian ukuran archne-app.css tidak tumbuh.
+   Susunan: judul tetap di atas, isi bergulir, tombol tetap di bawah. Tiap bagian = judul + panel berkelompok (.setgrp) berisi baris (.strow). */
+#me #setbtn{margin-right:-6px}
+#setmodal .box{width:780px;max-width:94%;height:min(640px,88%);padding:0;display:flex;flex-direction:column;overflow:hidden}
+#setmodal h3{flex:none;margin:0;padding:18px 22px 14px;font-size:18px;border-bottom:1px solid var(--line)}
+#setbody{flex:1 1 auto;min-height:0;display:flex;flex-direction:row;overflow:hidden}
+.settabs{flex:none;width:200px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:12px 10px;border-right:1px solid var(--line);overflow-y:auto}
+.settab{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;color:var(--dim);border-radius:10px;padding:10px 12px;min-height:42px;font-weight:600;font-size:14px}
+.settab:hover{background:var(--surface2);color:var(--fg)}
+.settab.on{background:var(--surface2);color:var(--fg);box-shadow:inset 3px 0 0 var(--acc)}
+.settab .ic{display:inline-block;flex:none;width:18px;height:18px;margin:0;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.settab.on .ic{color:var(--acc)}
+.settab span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setpane{flex:1 1 auto;min-width:0;overflow-y:auto;padding:4px 22px 20px}
+.setsec[hidden]{display:none}.setsec[data-single]>h4{display:none}.setsec[data-single]>.sint:first-of-type{margin-top:18px}
+#setmodal .row{flex:none;margin:0;padding:12px 22px;border-top:1px solid var(--line)}
+.setsec h4{margin:18px 0 4px;font-size:15px;font-weight:650;color:var(--fg)}
+.setsec .sint{margin:0 0 10px;font-size:13px;color:var(--dim);max-width:62ch}
+.setgrp{background:var(--bg);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.setnote{margin:10px 2px 0;font-size:12.5px;color:var(--dim);max-width:62ch}
+.strow{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:16px;row-gap:3px;align-items:center;padding:14px 16px;border-top:1px solid var(--line)}
+.strow:first-child{border-top:0}
+.strow .stt{font-weight:600;grid-column:1;grid-row:1}
+.strow .sth{font-size:12.5px;color:var(--dim);grid-column:1;grid-row:2;max-width:46ch}
+.strow .stc{grid-column:2;grid-row:1/span 2;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.strow .stu,.strow .stbar,.strow .stwarn{grid-column:1/-1}
+.strow select{background:var(--surface2);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:38px;font:inherit;max-width:100%}
+.strow select:focus{border-color:var(--acc);outline:0}
+.strow .stmb{width:110px;box-sizing:border-box}.strow .stmbl{font-size:13px;color:var(--dim)}
+.strow .stu{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;margin-top:10px;color:var(--dim)}
+.strow .stu b{font-weight:500;color:var(--fg)}
+.strow .stbar{height:5px;border-radius:4px;background:var(--surface2);overflow:hidden;margin-top:3px}
+.strow .stbar i{display:block;height:100%;background:var(--acc)}.strow .stbar i.hi{background:var(--danger)}
+.strow .stwarn{font-size:12.5px;color:var(--danger);margin-top:8px}
+.strow .stpath{word-break:break-all;max-width:none;font-family:ui-monospace,Consolas,monospace}
+.strow button.sec:disabled{opacity:.45;cursor:default}
+/* pilihan tema: tiga kartu dengan pratinjau mini chat; yang dipilih diberi cincin dan tanda centang */
+.thmset{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.thm{position:relative;display:flex;flex-direction:column;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.thm input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.thmp{position:relative;display:flex;height:72px;border-radius:12px;border:1.5px solid var(--line);overflow:hidden;transition:box-shadow .12s,border-color .12s}
+.thmp b{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:0 10px}
+.thmp b.d{background:#0e141b}.thmp b.l{background:#f2f5f8}
+.thmp i{display:block;height:9px;border-radius:5px;width:70%}
+.thmp b.d i:first-child{background:#243140}.thmp b.d i:last-child{background:#1f6f66;align-self:flex-end;width:55%}
+.thmp b.l i:first-child{background:#d3dde5}.thmp b.l i:last-child{background:#7fcfc3;align-self:flex-end;width:55%}
+.thm input:checked~.thmp{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc)}
+.thm input:checked~.thmp::after{content:'\2713';position:absolute;top:6px;right:6px;width:18px;height:18px;border-radius:50%;background:var(--acc);color:var(--acc-ink);font-size:12px;font-weight:700;line-height:18px;text-align:center}
+.thm input:focus-visible~.thmp{outline:2px solid var(--acc);outline-offset:3px}
+.thmn{font-size:13px;text-align:center;color:var(--dim)}
+.thm input:checked~.thmn{color:var(--fg);font-weight:650}
+@media (max-width:760px){
+  #setmodal .box{width:100%;max-width:100%}
+  #setmodal h3{padding:16px 18px 12px}#setbody{flex-direction:column}
+  .settabs{width:auto;flex-direction:row;gap:6px;padding:8px 12px;border-right:0;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}.settabs::-webkit-scrollbar{display:none}
+  .settab{width:auto;flex:none;padding:8px 14px;min-height:40px;border-radius:999px}.settab.on{box-shadow:none;background:var(--acc);color:var(--acc-ink)}.settab.on .ic{color:inherit}
+  .setpane{padding:2px 16px 16px}
+  #setmodal .row{padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px))}
+  #setmodal .row button{flex:1}
+  .strow{grid-template-columns:minmax(0,1fr)}
+  .strow .stc{grid-column:1;grid-row:3;justify-content:flex-start;margin-top:8px}
+  .strow select{width:100%}
+  .thmp{height:62px}
+}
+/* pilihan bahasa (i18n A3): daftar radio sederhana; yang dipilih diberi cincin dan tanda centang seperti kartu tema */
+.langset{display:flex;flex-direction:column;gap:8px;max-width:360px}
+.lang{position:relative;display:flex;align-items:center;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.lang input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.langn{flex:1;padding:11px 40px 11px 14px;border-radius:12px;border:1.5px solid var(--line);font-size:14px;color:var(--dim);transition:box-shadow .12s,border-color .12s}
+.lang input:checked~.langn{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc);color:var(--fg);font-weight:650}
+.lang input:checked~.langn::after{content:'\2713';position:absolute;top:50%;right:12px;transform:translateY(-50%);width:18px;height:18px;border-radius:50%;background:var(--acc);color:var(--acc-ink);font-size:12px;font-weight:700;line-height:18px;text-align:center}
+.lang input:focus-visible~.langn{outline:2px solid var(--acc);outline-offset:3px}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Teks native Archne, Indonesia. Pasangannya: values/archne_strings.xml (English, bawaan). Kedua berkas HARUS punya nama yang sama (dijaga test/i18n.js). -->
+<resources>
+    <string name="archne_ch_svc">Layanan latar belakang</string>
+    <string name="archne_ch_svc_desc">Menjaga Archne tetap tersambung saat layar mati. Aman dimatikan: layanan tetap berjalan.</string>
+    <string name="archne_ch_msg">Pesan masuk</string>
+    <string name="archne_ch_call">Panggilan masuk</string>
+    <string name="archne_svc_call">Panggilan suara berlangsung</string>
+    <string name="archne_svc_mic">Mikrofon sedang dipakai</string>
+    <string name="archne_svc_idle">Menjaga koneksi</string>
+    <string name="archne_you">Kamu</string>
+    <string name="archne_public">Publik</string>
+    <string name="archne_reply">Balas</string>
+    <string name="archne_mark_read">Tandai dibaca</string>
+    <string name="archne_not_sent">⚠ Tidak terkirim: %1$s</string>
+    <string name="archne_core_wait">inti Archne belum siap</string>
+    <string name="archne_failed">gagal</string>
+    <string name="archne_decline">Tolak</string>
+    <string name="archne_answer">Jawab</string>
+    <string name="archne_call_video">Panggilan video masuk</string>
+    <string name="archne_call_voice">Panggilan suara masuk</string>
+    <string name="archne_missed_video">Panggilan video tak terjawab</string>
+    <string name="archne_missed_voice">Panggilan suara tak terjawab</string>
+</resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin id="archne-downloads" version="1.1.0" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+  <name>ArchneDownloads</name>
+  <description>Menyalin berkas dari penyimpanan aplikasi ke folder Download publik perangkat, dan memilih berkas dengan path aslinya (Kirim Langsung dari HP).</description>
+  <platform name="android">
+    <config-file target="res/xml/config.xml" parent="/*">
+      <feature name="ArchneDownloads"><param name="android-package" value="com.xyraori.archne.ArchneDownloads" /></feature>
+    </config-file>
+    <!-- Android 11+: membaca berkas lewat path asli (Kirim Langsung dari HP tanpa menyalin). Pengguna menyalakannya di pengaturan "Akses semua berkas". -->
+    <config-file target="AndroidManifest.xml" parent="/manifest">
+      <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    </config-file>
+    <!-- WRITE_EXTERNAL_STORAGE (Android 9 ke bawah) sudah dideklarasikan oleh cordova-plugin-file-opener2; deklarasi kedua membuat manifest merger gagal. -->
+    <source-file src="src/android/ArchneDownloads.java" target-dir="src/com/xyraori/archne" />
+  </platform>
+</plugin>

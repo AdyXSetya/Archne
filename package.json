@@ -1,0 +1,51 @@
+{
+  "name": "archne",
+  "version": "0.30.0",
+  "description": "SOSMED LOCAL",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "serve": "node server.js",
+    "test": "node test/run-all.js",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "acorn": "^8.18.0",
+    "electron": "33.2.0",
+    "electron-builder": "25.1.8",
+    "resedit": "^2.0.3"
+  },
+  "build": {
+    "appId": "com.xyraori.archne",
+    "productName": "Archne",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**",
+      "src/**",
+      "renderer/**"
+    ],
+    "forceCodeSigning": false,
+    "win": {
+      "target": [
+        "portable",
+        "nsis"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "afterPack": "scripts/after-pack.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "author": "xyraori",
+  "license": "MIT"
+}

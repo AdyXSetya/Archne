@@ -1,0 +1,6 @@
+/* Tema (v0.23.1): Otomatis (ikut sistem, bawaan) / Gelap / Terang.
+   Token gelap ada di archne-app.css (:root). Atribut data-theme di <html> dipasang oleh js/archne-theme.js (dan skrip kecil di <head> supaya tidak berkedip).
+   Tanpa atribut = ikut sistem. Token terang ditulis dua kali (mode Terang dan Otomatis saat sistem terang): ubah keduanya bersamaan. */
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light;--bg:#f2f5f8;--surface:#fff;--surface2:#e9eff3;--line:#d8e1e8;--fg:#14202b;--dim:#5b6b7a;--acc:#0e8f81;--acc-ink:#fff;--mine:#d6f2ec;--mine-fg:#0b2a26;--mine-line:#b5e3da;--danger:#c0392b;--ok:#17804d;--warn:#9a6a00;--nl:36%;--shadow:0 8px 28px #0002;--hover:#eef3f6;--sel:#e1f1ee;--err:#b3261e}
+@media (prefers-color-scheme:light){:root:not([data-theme]){color-scheme:light;--bg:#f2f5f8;--surface:#fff;--surface2:#e9eff3;--line:#d8e1e8;--fg:#14202b;--dim:#5b6b7a;--acc:#0e8f81;--acc-ink:#fff;--mine:#d6f2ec;--mine-fg:#0b2a26;--mine-line:#b5e3da;--danger:#c0392b;--ok:#17804d;--warn:#9a6a00;--nl:36%;--shadow:0 8px 28px #0002;--hover:#eef3f6;--sel:#e1f1ee;--err:#b3261e}}

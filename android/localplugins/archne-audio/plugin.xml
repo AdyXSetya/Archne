@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plugin id="archne-audio" version="1.1.0" xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+  <name>ArchneAudio</name>
+  <description>Panggilan suara dan video: izin mikrofon dan kamera, mode panggilan, rute earpiece/speaker, dan layanan latar bertipe mikrofon.</description>
+  <platform name="android">
+    <config-file target="res/xml/config.xml" parent="/*">
+      <feature name="ArchneAudio"><param name="android-package" value="com.xyraori.archne.ArchneAudio" /></feature>
+    </config-file>
+    <config-file target="AndroidManifest.xml" parent="/manifest">
+      <uses-permission android:name="android.permission.RECORD_AUDIO" />
+      <uses-permission android:name="android.permission.CAMERA" />
+      <!-- Kamera bersifat opsional: perangkat tanpa kamera tetap bisa memasang aplikasi dan memakai panggilan suara. -->
+      <uses-feature android:name="android.hardware.camera" android:required="false" />
+      <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+      <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    </config-file>
+    <source-file src="src/android/ArchneAudio.java" target-dir="src/com/xyraori/archne" />
+  </platform>
+</plugin>

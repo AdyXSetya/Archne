@@ -1,0 +1,15 @@
+/* Pesan suara (Step 4): lembar perekam di bawah layar; kartu suara */
+#vrec{display:none;position:fixed;inset:0;z-index:71;background:#0008;align-items:flex-end;justify-content:center}
+#vrec.on{display:flex}
+#vrec .vrs{width:100%;max-width:480px;background:var(--surface,#1e1f24);color:var(--fg,#fff);border-radius:16px 16px 0 0;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:12px}
+#vrec .vrh{display:flex;align-items:center;gap:8px}
+#vrec .vrti{flex:1;min-width:0;font-weight:600}
+#vrec .vrm{min-height:1.2em;opacity:.85}
+#vrec .vrt{display:none;font-size:28px;text-align:center;color:#e74c3c;font-variant-numeric:tabular-nums}
+#vrec .vrb,#vrec .vrv{display:none;gap:10px;justify-content:center;align-items:center}
+#vrec .vrv audio{flex:1;min-width:0;max-width:100%}
+#vrec.rec .vrt,#vrec.rec .vrbrec{display:flex}
+#vrec.rev .vrv,#vrec.rev .vrbrev{display:flex}
+#vrec.err .vrbrev{display:none}
+#vrec .ivb{background:var(--surface2,#2a2c33);color:var(--fg,#fff);border:0;border-radius:10px;padding:8px 16px;min-height:40px;font-size:14px;cursor:pointer}
+#vrec .ivb.pri{background:#2d7ff9;color:#fff}

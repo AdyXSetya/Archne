@@ -1,0 +1,48 @@
+/* Menu aksi pesan (v0.24.0): tombol ⋯, popover (desktop), bottom sheet (sentuh). Dipisah dari archne-app.css (pengecualian ukuran archne-app.css tidak boleh tumbuh). */
+.mmore{background:none;color:inherit;border:0;box-shadow:none;padding:0 6px;margin:0 -4px 0 2px;min-height:0;height:auto;font-size:15px;font-weight:700;line-height:1;letter-spacing:1px;border-radius:6px;opacity:0;vertical-align:baseline}
+.m:hover .mmore,.m.mm-on .mmore,.mmore:focus-visible{opacity:.75}.mmore:hover{opacity:1;background:color-mix(in srgb,var(--fg) 14%,transparent)}
+@media (hover:none){.mmore{display:none}}
+.m.mm-on{outline:2px solid color-mix(in srgb,var(--acc) 55%,transparent);outline-offset:1px}
+#mmscrim{display:none;position:fixed;inset:0;z-index:70;background:#0007}
+#mmenu{display:none;position:fixed;z-index:71;min-width:210px;max-width:min(92vw,300px);background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:4px}
+.mmi{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:8px 12px;background:none;color:var(--fg);border:0;border-radius:8px;font-size:14px;font-weight:500;text-align:left}
+.mmi .mi-ic{width:20px;flex:none;text-align:center}
+.mmi:hover:not(:disabled),.mmi:focus-visible{background:var(--surface2)}.mmi:disabled{opacity:.55;cursor:default}
+.mmi.dng{color:var(--danger)}.mmi.dng:hover:not(:disabled),.mmi.dng:focus-visible{background:var(--danger);color:#fff}
+#mmenu .mmh{display:none}
+#mmenu.sheet{left:0;right:0;bottom:0;top:auto;max-width:none;min-width:0;border-width:1px 0 0;border-radius:20px 20px 0 0;padding:6px 8px calc(10px + env(safe-area-inset-bottom,0px));animation:mmup .16s ease-out}
+#mmenu.sheet::before{content:'';display:block;width:36px;height:4px;margin:2px auto 8px;border-radius:2px;background:var(--line)}
+#mmenu.sheet .mmh{display:block;padding:2px 12px 10px;margin-bottom:4px;border-bottom:1px solid var(--line);font-size:13px;line-height:1.4;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#mmenu .mmh b{margin-right:8px}#mmenu .mmh span{color:var(--dim)}
+#mmenu.sheet .mmi{min-height:50px;font-size:16px}
+@keyframes mmup{from{transform:translateY(28px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){#mmenu.sheet{animation:none}}
+/* strip sematan: tombol tidak boleh menggencet teks di layar sempit (tombol turun ke baris sendiri) */
+.sem button{flex:none}#sembar{max-height:min(28vh,240px)}
+@media (max-width:760px){.sem{flex-wrap:wrap}.sem .sc{flex:1 1 calc(100% - 30px)}.sem .sc+button{margin-left:26px}}
+/* Reaksi (v0.24.0): baris emoji cepat di menu, chip di bawah gelembung, daftar pelaku */
+.mmq{display:flex;gap:2px;padding:4px 4px 6px;margin-bottom:4px;border-bottom:1px solid var(--line)}
+.mmqb{flex:1 1 0;min-width:0;height:40px;padding:0;background:none;color:inherit;border:0;border-radius:10px;font-size:22px;line-height:1}
+.mmqb:hover,.mmqb:focus-visible{background:var(--surface2)}.mmqb.on{background:color-mix(in srgb,var(--acc) 22%,transparent)}
+#mmenu.sheet .mmqb{height:48px;font-size:26px}
+/* v0.25.1: reaksi menggantung di tepi bawah gelembung (seperti WhatsApp), bukan di dalam di atas jam */
+.m.hasrx{margin-bottom:15px}.m.hasrx.cont{margin-bottom:15px}
+.rxs{display:flex;flex-wrap:nowrap;gap:3px;position:absolute;right:10px;bottom:-13px;margin:0;white-space:nowrap;z-index:1}
+.rxs .rxc{padding:1px 7px;background:var(--surface);border:1px solid var(--line);box-shadow:0 1px 2px #0003}
+.rxs .rxc.mine{background:color-mix(in srgb,var(--acc) 22%,var(--surface));border-color:var(--acc)}
+.rxc{display:inline-flex;align-items:center;gap:4px;min-height:0;height:auto;padding:2px 8px;font-size:14px;line-height:1.3;background:color-mix(in srgb,var(--fg) 10%,transparent);color:inherit;border:1px solid transparent;border-radius:999px;box-shadow:none}
+.rxc b{font-size:12px;font-weight:600}.rxc.mine{border-color:var(--acc);background:color-mix(in srgb,var(--acc) 20%,transparent)}
+#mmenu.who{min-width:140px;max-height:min(50vh,320px);overflow:auto;padding:6px 4px}
+.mmwh{padding:2px 12px 6px;font-weight:600;border-bottom:1px solid var(--line);margin-bottom:4px}.mmwr{padding:4px 12px;font-size:14px}
+#mmenu.pick{min-width:260px}.mmp{padding:4px}.mmpi{display:flex;gap:6px;margin-bottom:6px}
+.mmpin{flex:1;min-width:0;font-size:18px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--fg)}
+.mmpok{flex:none;padding:6px 12px;border-radius:10px}
+.mmpg{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;max-height:min(34vh,200px);overflow:auto}
+.mmpg .mmqb{height:36px;font-size:20px}
+.emj{display:inline-block;width:1.2em;height:1.2em;vertical-align:-.2em}
+.mmreact{font-weight:400;font-size:14px;letter-spacing:0;margin-right:0}
+/* Emoji: paksa fon emoji berwarna. Tanpa ini tombol memakai fon aplikasi yang punya glyph ☺ gaya-garis (tampak tipis/hitam-putih) dan emoji lain berganti gaya. */
+.mmqb,.rxc,.mmwh{font-family:"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif}
+.rxc b{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.mmplus{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--surface2);color:var(--fg);font:500 22px/1 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.mmqb:hover .mmplus,.mmqb:focus-visible .mmplus{background:color-mix(in srgb,var(--acc) 30%,var(--surface2))}

@@ -1,0 +1,135 @@
+/* Rapikan UI Step 3 (v0.25.0): gaya ikon bundar yang sama dengan kartu berkas (Step 1) dan pemutar gelembung (Step 2), dipakai di
+   lembar perekam suara, kamera, penampil foto, pemutar layar penuh, Kirim Langsung, dan elemen gelembung chat. Tanpa teks tombol:
+   tiap tombol punya title + aria-label. Semua warna lewat token tema (archne-app.css / archne-theme.css) kecuali lapisan gelap di atas foto/video. */
+
+/* ---- tombol ikon bundar (.ivi) ---- */
+.ivi{display:inline-flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;min-height:40px;padding:0;border-radius:50%;font-size:0;line-height:0;border:0;cursor:pointer}
+.ivi svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ivi svg.f{fill:currentColor;stroke:none}
+.ivi.big{width:56px;height:56px;min-height:56px}.ivi.big svg{width:26px;height:26px}
+.ivi.sec{background:var(--surface2);color:var(--fg)}.ivi.sec:hover{background:color-mix(in srgb,var(--fg) 14%,var(--surface2))}
+/* lapisan penuh punya aturan .ivb lama (teks, padding) dengan spesifisitas id: ikon bundar menimpanya di sini */
+#imgv .ivi,#cam .ivi,#mpl .ivi,#vrec .ivi{padding:0;border-radius:50%;font-size:0;width:40px;height:40px;min-height:40px}
+#vrec .ivi.big{width:56px;height:56px;min-height:56px}#vrec .ivi.big svg{width:26px;height:26px}
+/* di atas lapisan gelap (foto, video, kamera) */
+#imgv .ivi,#cam .ivi,#mpl .ivi{background:#ffffff22;color:#fff}
+#imgv .ivi:hover,#cam .ivi:hover,#mpl .ivi:hover{background:#ffffff38}
+#imgv .ivi.pri,#cam .ivi.pri,#mpl .ivi.pri{background:#2d7ff9;color:#fff}
+#imgv .ivf .ivi{width:38px;height:38px;min-height:38px}
+#imgv .ivzl{min-width:52px}
+#imgv .ivi:focus-visible,#cam .ivi:focus-visible,#mpl .ivi:focus-visible{outline:2px solid #fff;outline-offset:2px}
+#mpl .mph{gap:6px}
+#mpl #mpsp{height:32px;min-height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:700;background:#ffffff22;color:#fff}
+
+/* ---- lembar perekam pesan suara ---- */
+#vrec .vrs{gap:14px;padding-top:10px}
+#vrec .vrs::before{content:'';align-self:center;width:36px;height:4px;border-radius:2px;background:color-mix(in srgb,var(--fg,#fff) 22%,transparent);margin-bottom:2px}
+#vrec .vrh .ivi{background:var(--surface2,#2a2c33);color:var(--fg,#fff)}
+#vrec .vrti{font-weight:700;font-size:16px}
+#vrec .vrm{text-align:center;font-size:13.5px;color:var(--dim,#aab)}#vrec .vrm:empty{display:none}
+#vrec .vrt{font-size:32px;font-weight:600;letter-spacing:.5px;animation:vrpulse 1.4s ease-in-out infinite}
+@keyframes vrpulse{50%{opacity:.55}}
+#vrec .vrb{gap:18px}
+#vrec .ivi{background:var(--surface2,#2a2c33);color:var(--fg,#fff)}
+#vrec .ivi.pri{background:var(--acc,#2d7ff9);color:var(--acc-ink,#fff)}
+#vrec .ivi.pri.big{box-shadow:0 2px 10px #0004}
+#vrec .vrbrec .ivi.pri{background:#e74c3c;color:#fff}
+#vrec .vrv{gap:12px;padding:6px 4px}
+#vrec .vtr{flex:1;min-width:0;height:6px;border-radius:3px;background:color-mix(in srgb,var(--fg,#fff) 22%,transparent);position:relative;cursor:pointer;outline-offset:6px}
+#vrec .vtr::after{content:'';position:absolute;left:0;right:0;top:-14px;bottom:-14px}
+#vrec .vtr i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--acc,#2d7ff9)}
+#vrec .vrd{flex:none;min-width:40px;text-align:right;font-variant-numeric:tabular-nums;font-size:14px;color:var(--dim,#aab)}
+#vrec.rev .vrbrev{justify-content:space-between;padding:0 6px}
+@media (prefers-reduced-motion:reduce){#vrec .vrt{animation:none}}
+
+/* ---- kamera ---- */
+#cam .cmh{padding:8px 12px}
+#cam .cmt{font-weight:600}
+#cam .cmmode{background:#ffffff1f;border-radius:999px;padding:3px;gap:2px}
+#cam .cmmode .ivi{width:52px;height:34px;min-height:34px;border-radius:999px;background:transparent}
+#cam .cmmode .ivi.on{background:#fff;color:#000}
+#cam .cmbar .ivi{width:44px;height:44px;min-height:44px}
+#cam .cmrev{width:100%;max-width:360px;justify-content:space-between}
+#cam .cmrev .ivi{width:56px;height:56px;min-height:56px}#cam .cmrev .ivi svg{width:26px;height:26px}
+
+/* ---- Kirim Langsung: tombol ikon di baris transfer ---- */
+.dxb.ic-btn{width:38px;height:38px;min-height:38px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0;line-height:0}
+.dxb.ic-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.dxb.ic-btn svg.f{fill:currentColor;stroke:none}
+.dxb.ic-btn.sec:hover{background:color-mix(in srgb,var(--fg) 14%,var(--surface))}
+.dxb.ic-btn.dng{background:var(--surface);color:var(--danger)}
+.dxa{gap:8px}
+#dxmodal .row{align-items:center}
+#dxscanbar .ivi{width:34px;height:34px;min-height:34px}
+
+/* ---- gelembung chat ---- */
+.st{display:inline-flex;align-items:center;gap:2px;vertical-align:-2px;font-weight:600}
+.st svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.st.ok{color:var(--acc)}
+.m.me .st:not(.ok){color:inherit;opacity:.8}
+.t{display:flex;align-items:center;justify-content:flex-end;gap:2px}
+.t .mmore{display:inline-flex;align-items:center;justify-content:center;width:22px;height:20px;padding:0;margin:0 -4px 0 2px;font-size:0;letter-spacing:0;border-radius:10px}
+.t .mmore svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.t .mmore svg.f{fill:currentColor;stroke:none}
+.t .mmore.mmreact{margin-right:0}
+.hti .sub .ic{display:inline-block;width:13px;height:13px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hti .sub .ic.warn{color:var(--warn)}
+#rbar button{width:30px;height:30px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0}
+#rbar button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#rbar button:hover{background:color-mix(in srgb,var(--fg) 12%,transparent);color:var(--fg)}
+#rbar .rn{display:flex;align-items:center;gap:4px}#rbar .rn svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.rq .rn svg{width:12px;height:12px;vertical-align:-1px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---- Step 3b: pratinjau daftar chat + menu profil ---- */
+.r2 .pv .ic,.pmenu .ic,.pbtns .ic,.psub .ic,.pst .ic,.sect .ic,.pcam .ic{display:inline-block;width:14px;height:14px;flex:none;vertical-align:-2px;margin-right:5px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.r2 .pv .ic{width:13px;height:13px;vertical-align:-2px;margin-right:4px}
+.pmenu button{display:flex;align-items:center}.pmenu .ic{width:18px;height:18px;margin-right:10px}
+.pbtns button .ic{width:16px;height:16px;vertical-align:-3px}
+.pcam{font-size:0}.pcam .ic{width:14px;height:14px;margin:0}
+.psub .ic.fil{fill:currentColor;stroke:none;color:var(--warn,#f5b301)}
+.psub .pdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7b8794;margin-right:5px;vertical-align:1px}.psub .pdot.on{background:#3ddc84}
+.pst .ic{vertical-align:-3px}
+
+/* ---- Tautan web di chat (v0.25.1): chip ringkas + tombol salin; peramban dalam aplikasi ---- */
+.lnkw{display:inline-flex;align-items:center;gap:2px;max-width:100%;vertical-align:middle;margin:1px 0}
+a.lnk{display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:100%;padding:4px 10px;border-radius:14px;background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc);text-decoration:none;font-size:13.5px;line-height:1.3;cursor:pointer}
+a.lnk:hover{background:color-mix(in srgb,var(--acc) 24%,transparent)}
+a.lnk:focus-visible,.lnkcp:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+a.lnk svg.ic{flex:none;width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+a.lnk .lh{font-weight:600;white-space:nowrap}
+a.lnk .lp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+.lnkcp{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;min-height:28px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--dim);font-size:0;cursor:pointer}
+.lnkcp:hover{background:color-mix(in srgb,var(--fg) 12%,transparent);color:var(--fg)}
+.lnkcp svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.inv .lnkcp{padding:0;min-height:28px;width:28px}
+@media (pointer:coarse){.lnkcp{width:36px;height:36px;min-height:36px}.inv .lnkcp{width:36px;min-height:36px}}
+
+.webbr{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--bg);color:var(--fg)}
+.webbr[hidden]{display:none}
+.wbbar{flex:none;display:flex;align-items:center;gap:2px;height:48px;padding:0 6px;box-sizing:border-box;background:var(--surface);border-bottom:1px solid var(--line)}
+.wbb{flex:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;min-height:40px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--fg);font-size:0;cursor:pointer}
+.wbb:hover:not(:disabled){background:var(--hover)}
+.wbb:disabled{opacity:.35;cursor:default}
+.wbb:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.wbb svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.wbt{flex:1;min-width:0;padding:0 8px;display:flex;flex-direction:column;justify-content:center}
+.wbh{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wbh.http{color:var(--warn)}
+.wbs{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wbload{position:absolute;left:0;right:0;top:47px;height:2px;background:linear-gradient(90deg,transparent,var(--acc),transparent);background-size:40% 100%;background-repeat:no-repeat;animation:wbslide 1.1s linear infinite}
+.wbload[hidden]{display:none}
+@keyframes wbslide{from{background-position:-40% 0}to{background-position:140% 0}}
+.wbmsg{padding:16px;color:var(--dim);font-size:13px}.wbmsg:empty{display:none}
+@media (prefers-reduced-motion:reduce){.wbload{animation:none;background-size:100% 100%;opacity:.6}}
+
+/* ---- Step 3c: dialog Pengaturan, modal anggota grup, dan judul modal channel ---- */
+.setsec h4,#setmodal h3,#mtitle,#pintitle,.mbg label span{display:flex;align-items:center;gap:8px}
+.setsec h4 .ic,#setmodal h3 .ic,#mtitle .ic,#pintitle .ic,.mbg label span .ic{display:inline-block;flex:none;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.setsec h4 .ic{color:var(--acc)}
+#setmodal h3 .ic{width:20px;height:20px;color:var(--acc)}
+.mbg label span .ic{width:16px;height:16px;color:var(--dim)}
+.mrow .tg.blk{display:inline-flex;align-items:center;gap:3px;color:var(--danger)}
+.mrow .tg.blk .ic{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+#mleave,#mdisband{display:inline-flex;align-items:center;gap:8px}
+#mleave .ic,#mdisband .ic{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#mdisband{background:var(--danger);color:#fff}

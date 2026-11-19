@@ -1,0 +1,42 @@
+/* Kartu berkas (v0.25.1): ikon bundar, satu baris, status berupa ikon kecil, aksi lain di menu ⋮. */
+.fc{margin-top:4px;min-width:250px;max-width:340px;white-space:normal}
+.fc .ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.fc .ic.f{fill:currentColor;stroke:none}
+.fc .frow{display:flex;align-items:center;gap:10px}
+.fc .fk{flex:none;width:42px;height:42px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--fg) 10%,transparent);color:inherit}
+.fc .fk[data-k=aud]{color:#e0a43a}.fc .fk[data-k=vid]{color:#a67cf0}
+.fc .fmid{flex:1;min-width:0}
+.fc .fn{font-weight:600;font-size:14px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fc .fi{display:flex;align-items:center;gap:8px;font-size:12px;line-height:1.3;color:var(--dim);margin-top:2px;min-height:16px}.m.me .fc .fi{color:inherit;opacity:.75}
+.fc .fact{display:flex;gap:6px;flex:none}
+.fc .fb.ic-btn{width:38px;height:38px;min-height:0;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0;flex:none}
+.fc .fb.sec{background:var(--surface2);color:var(--fg)}.fc .fb.danger{background:#a8651f;color:#fff}
+.fc .fmore{flex:none;width:30px;height:30px;min-height:0;padding:0;margin:0;border:0;border-radius:50%;background:none;color:inherit;box-shadow:none;opacity:.6;display:inline-flex;align-items:center;justify-content:center}
+.fc .fmore .ic{width:18px;height:18px}.fc .fmore:hover,.fc .fmore:focus-visible{opacity:1;background:color-mix(in srgb,var(--fg) 14%,transparent)}
+.fc .fst{display:inline-flex;align-items:center;gap:3px}.fc .fst .ic{width:14px;height:14px}.fc .fst b{font-weight:600;font-size:12px}
+.fc .fst.ok{color:var(--ok)}.fc .fst.cour{color:#7cc0ff}.fc .fst.warn{color:var(--warn)}
+.fc .fs{display:flex;align-items:flex-start;gap:6px;font-size:12.5px;margin:6px 0 0;color:var(--dim)}.fc .fs .ic{width:15px;height:15px;margin-top:1px}
+.fc .fs.err{color:var(--err)}.fc .fs.warn{color:var(--warn)}
+.fc .bar{height:4px;background:color-mix(in srgb,var(--fg) 14%,transparent);border-radius:2px;overflow:hidden;margin-top:8px}.fc .bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .1s}
+.fcvc .vtr{height:4px;border-radius:2px;background:color-mix(in srgb,var(--fg) 22%,transparent);position:relative;margin:2px 0 6px}
+.fcvc .vtr i{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:2px;background:var(--acc)}
+.fcvc .fb.ic-btn,.fcvc .fk{width:44px;height:44px;border-radius:50%}
+.fc.fcimg{min-width:0;width:fit-content;max-width:100%}
+.fc .fthw{position:relative;display:block;width:fit-content;max-width:100%}
+.fc .fth{display:block;position:relative;box-sizing:border-box;padding:0;margin:0;border:0;border-radius:12px;overflow:hidden;background:var(--surface2);max-width:min(240px,100%);min-height:0;line-height:0;font-weight:400}
+.fc button.fth{cursor:pointer}.fc button.fth:hover img{filter:brightness(1.06)}
+.fc .fth img{display:block;width:100%;height:100%;min-height:24px;object-fit:cover;-webkit-user-drag:none;user-select:none}
+.fc .fthb{position:absolute;right:6px;bottom:6px;background:#000b;color:#fff;font-size:12px;font-weight:600;padding:2px 9px;border-radius:10px;line-height:1.5}
+.fc .fthw .fmore{position:absolute;top:6px;right:6px;width:28px;height:28px;background:#0008;color:#fff;opacity:.92}
+.fc .fthw .fthx{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}
+.fc .fthw .fthx .fb{background:#000a;color:#fff}
+.fc .fmeta{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px}
+.fth .fthp .ic{width:22px;height:22px}
+/* Pemutar di gelembung (Step 2) */
+.fcvc .vtr{cursor:pointer}.fcvc .vtr::after{content:'';position:absolute;left:0;right:0;top:-12px;bottom:-12px}
+.fc .fb.ilload{opacity:.55}
+.fc .vsp{min-height:0;height:20px;padding:0 8px;margin:0;border:0;border-radius:10px;font-size:11px;font-weight:700;background:color-mix(in srgb,var(--fg) 14%,transparent);color:inherit;box-shadow:none}
+.fc .fthw .fvid{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;border-radius:12px;cursor:pointer;z-index:1}
+.fc .fthw .fvov{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px;border-radius:50%;background:#000a;color:#fff;display:none;align-items:center;justify-content:center;pointer-events:none;z-index:2}
+.fc .fthw.ilpaused .fvov{display:flex}
+.fc .fthw .fvp{position:absolute;left:0;right:0;bottom:0;height:3px;background:#fff4;z-index:2;pointer-events:none}.fc .fthw .fvp i{display:block;height:100%;width:0;background:var(--acc)}
+.fc .fthw .fmore{z-index:3}

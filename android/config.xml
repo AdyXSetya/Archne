@@ -1,0 +1,39 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.xyraori.archne" version="0.30.0" android-versionCode="3000" xmlns="http://www.w3.org/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android">
+  <name>Archne</name>
+  <description>SOSMED LOCAL</description>
+  <content src="index.html" />
+
+  <!-- Halaman induk dimuat dari http://localhost; UI dari inti Node di http://127.0.0.1:PORT di dalam iframe.
+       Kebijakan CSP di index.html membatasi halaman hanya ke dirinya sendiri dan frame 127.0.0.1. -->
+  <access origin="*" />
+  <allow-intent href="http://*/*" />
+  <preference name="Scheme" value="http" />
+  <preference name="Orientation" value="default" />
+  <preference name="BackgroundColor" value="0xff0e141b" />
+  <preference name="android-minSdkVersion" value="24" />
+  <!-- layar pembuka Android 12+: latar gelap + ikon Archne (tanpa ini yang tampil logo Cordova) -->
+  <preference name="AndroidWindowSplashScreenBackground" value="#0A0B0E" />
+  <preference name="AndroidWindowSplashScreenAnimatedIcon" value="res/screen/android/splash_icon.png" />
+
+  <platform name="android">
+    <!-- ikon launcher: src = ikon biasa (Android 7), foreground+background = ikon adaptive (Android 8+) -->
+    <icon density="ldpi" src="res/icon/android/ldpi.png" foreground="res/icon/android/ldpi-foreground.png" background="res/icon/android/ldpi-background.png" />
+    <icon density="mdpi" src="res/icon/android/mdpi.png" foreground="res/icon/android/mdpi-foreground.png" background="res/icon/android/mdpi-background.png" />
+    <icon density="hdpi" src="res/icon/android/hdpi.png" foreground="res/icon/android/hdpi-foreground.png" background="res/icon/android/hdpi-background.png" />
+    <icon density="xhdpi" src="res/icon/android/xhdpi.png" foreground="res/icon/android/xhdpi-foreground.png" background="res/icon/android/xhdpi-background.png" />
+    <icon density="xxhdpi" src="res/icon/android/xxhdpi.png" foreground="res/icon/android/xxhdpi-foreground.png" background="res/icon/android/xxhdpi-background.png" />
+    <icon density="xxxhdpi" src="res/icon/android/xxxhdpi.png" foreground="res/icon/android/xxxhdpi-foreground.png" background="res/icon/android/xxxhdpi-background.png" />
+    <!-- inti Node melayani UI lewat http di loopback -->
+    <edit-config file="app/src/main/AndroidManifest.xml" mode="merge" target="/manifest/application">
+      <application android:usesCleartextTraffic="true" />
+    </edit-config>
+    <!-- jaringan: INTERNET untuk TCP/UDP, multicast untuk penemuan peer di Wi-Fi -->
+    <config-file target="AndroidManifest.xml" parent="/manifest">
+      <uses-permission android:name="android.permission.INTERNET" />
+      <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+      <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+      <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    </config-file>
+  </platform>
+</widget>

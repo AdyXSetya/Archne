@@ -1,0 +1,12 @@
+/* Tombol ikon saja (profil, Halaman): nama ada di title + aria-label */
+.pib{position:relative;width:44px;height:44px;min-height:44px;padding:0;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;flex:none;background:var(--surface2);color:var(--fg)}
+.pib.pri{background:var(--acc);color:var(--acc-ink)}
+.pib:hover:not(:disabled){filter:brightness(1.12)}
+.pib .ic{width:20px;height:20px;margin:0;vertical-align:0;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pbtns .pib .ic,.pghd .pib .ic{width:20px;height:20px;margin:0;vertical-align:0;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pghd{gap:8px}
+.pib .pgdot{position:absolute;top:7px;right:7px;margin:0}
+.pnme{display:inline-flex;align-items:center;justify-content:center;gap:6px;max-width:100%}.pnme .pnt{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pnme .pib.mini{width:28px;height:28px;min-height:28px;border-radius:8px;background:transparent;color:var(--dim)}.pnme .pib.mini:hover{background:var(--surface2);color:var(--fg)}.pnme .pib.mini .ic{width:15px;height:15px}
+.pnedit{display:flex;align-items:center;justify-content:center;gap:6px;margin:2px 0 4px}.pnedit input{flex:1;min-width:0;max-width:200px;text-align:center;font-weight:700;font-size:16px;padding:8px 10px;border-radius:10px;background:var(--surface2);border:1px solid var(--line)}
+.pnedit .pib{width:36px;height:36px;min-height:36px}
