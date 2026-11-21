@@ -20,18 +20,19 @@ const n = (html) => { const m = html.match(/class="cvg chv[^"]*" data-n="(\d+)"/
 }
 ok('tanpa kamera hidup: tampilan suara; jalur video kosong tidak dihitung');
 
-// 2. satu kamera lawan: satu kartu, daftar peserta lengkap tetap ada, tombol di bawah
+// 2. satu kamera lawan: satu kartu, tanpa daftar peserta di bawah; foto profil di pojok kartu; jumlah orang di header; tombol di bawah
 {
   const v = view([leg('A', { cam: true }), leg('B', { cam: false }), leg('C')]);
   const html = LC.overlayHtml(v, H);
   assert.strictEqual(LC.videoView(v), true); assert.deepStrictEqual(keys(html), ['A']); assert.strictEqual(n(html), 1);
-  assert(/<ul class="cpl cvl"/.test(html), 'daftar peserta di bawah kartu');
-  for (const p of ['ME', 'A', 'B', 'C']) assert(new RegExp('<li class="[^"]*" data-peer="' + p + '"').test(html), 'baris ' + p);
-  assert(html.indexOf('class="cvg') < html.indexOf('class="cpl cvl"') && html.indexOf('class="cpl cvl"') < html.indexOf('class="cbtns"'), 'urutan: kartu, daftar, tombol');
+  assert(!/class="cpl/.test(html) && !/data-peer="/.test(html), 'tidak ada daftar peserta di bawah kartu');
+  assert(/<span class="cvp">/.test(html), 'foto profil di pojok kartu');
+  assert(/Channel suara · 4 orang/.test(html), 'jumlah orang di header');
+  assert(html.indexOf('class="cvg') < html.indexOf('class="cbtns"'), 'urutan: kartu, tombol');
   assert.strictEqual((html.match(/id="calltime"/g) || []).length, 1);
   assert(/class="cnm">Ngobrol</.test(html));
 }
-ok('satu kamera: satu kartu di atas, daftar peserta lengkap di bawah, tombol paling bawah');
+ok('satu kamera: satu kartu, foto profil di pojok, tanpa daftar peserta');
 
 // 3. aku + dua lawan: 3 kartu, aku terakhir; kameraku mati tidak punya kartu
 {
@@ -100,7 +101,7 @@ ok('1-1 dan grup tidak berubah');
 {
   const css = require('./_src').htmlSrc();
   assert(/#callov \.cvg\[data-n="1"\]\{--c:1;--r:1;max-width:720px\}/.test(css), 'satu kartu');
-  assert(/#callov \.cvl\{max-height:22vh/.test(css), 'daftar peserta dibatasi dan digulir');
+  assert(/#callov \.cvp\{position:absolute;top:8px;left:8px/.test(css) && /\.speaking \.av/.test(css) || /\.cvt\.speaking/.test(css), 'foto di pojok kiri atas + bingkai hijau saat bicara');
   assert(/LC\.videoView\(v\)/.test(css) && /mountVideos\(v\)/.test(css), 'archne-index.html memasang video lewat videoView/mountVideos');
 }
 ok('CSS dan jembatan archne-index.html');

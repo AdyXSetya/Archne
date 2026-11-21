@@ -1,5 +1,5 @@
 'use strict';
-// Android (nodejs-mobile) berjalan tanpa ICU: \p{L} melempar "Invalid property name in character class". Jalur cadangan filter spam
+// Runtime Node di Android bisa berjalan tanpa ICU: \p{L} melempar "Invalid property name in character class". Jalur cadangan filter spam
 // harus (1) tidak melempar dan (2) menghasilkan kunci yang sama dengan jalur utama untuk teks tanpa aksen/bentuk lebar-penuh (yang butuh NFKD).
 const assert = require('assert');
 const { buildSpamNorm } = require('../src/archne-core');

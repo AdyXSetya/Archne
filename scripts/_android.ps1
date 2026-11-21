@@ -1,9 +1,8 @@
-# Fungsi khusus Android. Dipanggil lewat dot-source setelah _common.ps1. Hanya karakter ASCII.
+# Fungsi khusus Android (Capacitor 8). Dipanggil lewat dot-source setelah _common.ps1. Hanya karakter ASCII.
 $SdkRoot      = Join-Path $env:LOCALAPPDATA 'Android\Sdk'
 $CmdToolsUrl  = 'https://dl.google.com/android/repository/commandlinetools-win-11076708_latest.zip'
-$NdkVersion   = '25.2.9519653'
-$AndroidPlatform = 'android@12.0.1'   # cordova-android
-$SdkPackages  = @('platform-tools', 'platforms;android-33', 'platforms;android-34', 'build-tools;33.0.2', 'build-tools;34.0.0', "ndk;$NdkVersion")
+# platform 36 + build-tools 36.0.0 (zipalign -P 16) + CMake 3.22.1 (membangun libcapacitor-nodejs). NDK dipasang Gradle sendiri bila belum ada.
+$SdkPackages  = @('platform-tools', 'platforms;android-36', 'build-tools;36.0.0', 'cmake;3.22.1')
 
 function Set-UserEnv($name, $value) {
   [Environment]::SetEnvironmentVariable($name, $value, 'User')
@@ -27,32 +26,36 @@ function Run-Batch($lines, $logName) {
   }
 }
 
-function Test-Jdk17($dir) {
+function Test-Jdk21($dir) {
   if (-not $dir -or -not (Test-Path "$dir\bin\javac.exe") -or -not (Test-Path "$dir\release")) { return $false }
-  return [bool](Get-Content "$dir\release" -ErrorAction SilentlyContinue | Select-String -Pattern 'JAVA_VERSION="17\.')
+  return [bool](Get-Content "$dir\release" -ErrorAction SilentlyContinue | Select-String -Pattern 'JAVA_VERSION="21\.')
 }
 
-function Find-Jdk17 {
-  $cands = @($env:JAVA_HOME)
-  foreach ($root in @('C:\Program Files\Eclipse Adoptium', 'C:\Program Files\Microsoft', 'C:\Program Files\Java', 'C:\Program Files\Android\Android Studio\jbr')) {
-    if (Test-Path $root) { $cands += (Get-ChildItem $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^jdk-?17' } | ForEach-Object { $_.FullName }) }
+function Find-Jdk21 {
+  $c = @($env:JAVA_HOME_21, $env:JAVA_HOME)
+  foreach ($r in @('C:\Program Files\Eclipse Adoptium', 'C:\Program Files\Microsoft', 'C:\Program Files\Java', 'C:\Program Files\Android\Android Studio\jbr')) {
+    if (Test-Path $r) { $c += (Get-ChildItem $r -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^jdk-?21' } | ForEach-Object { $_.FullName }) }
   }
-  foreach ($c in $cands) { if (Test-Jdk17 $c) { return $c } }
+  foreach ($d in $c) { if (Test-Jdk21 $d) { return $d } }
   return $null
 }
 
-function Ensure-Jdk17 {
-  $jdk = Find-Jdk17
+# JDK 21 hanya untuk proses ini (JAVA_HOME pengguna tidak diubah).
+function Ensure-Jdk21 {
+  $jdk = Find-Jdk21
   if (-not $jdk) {
-    Log 'JDK 17 belum ada. Memasang Temurin 17 via winget (mungkin muncul jendela izin admin)...'
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'winget tidak ada. Pasang JDK 17 manual (Temurin) dari https://adoptium.net lalu jalankan ulang.' }
-    winget install -e --id EclipseAdoptium.Temurin.17.JDK --accept-source-agreements --accept-package-agreements --silent
-    $jdk = Find-Jdk17
-    if (-not $jdk) { throw 'JDK 17 terpasang tapi belum ditemukan. Tutup jendela ini, buka lagi, lalu jalankan ulang.' }
+    Log 'JDK 21 belum ada. Memasang Temurin 21 via winget (bisa muncul jendela izin admin)...'
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'winget tidak ada. Pasang JDK 21 (Temurin) dari https://adoptium.net lalu jalankan ulang.' }
+    winget install -e --id EclipseAdoptium.Temurin.21.JDK --accept-source-agreements --accept-package-agreements --silent
+    $jdk = Find-Jdk21
+    if (-not $jdk) { throw 'JDK 21 terpasang tapi belum ditemukan. Tutup jendela ini, buka lagi, lalu jalankan ulang.' }
   }
-  Set-UserEnv 'JAVA_HOME' $jdk
-  $env:Path = "$jdk\bin;$env:Path"
-  Log "JDK 17: $jdk"
+  $env:JAVA_HOME = $jdk; $env:Path = "$jdk\bin;$env:Path"
+  Log "JDK 21: $jdk"
+}
+
+function Test-AndroidSdk {
+  return (Test-Path "$SdkRoot\platforms\android-36") -and (Test-Path "$SdkRoot\build-tools\36.0.0") -and (Test-Path "$SdkRoot\cmake\3.22.1")
 }
 
 function Ensure-AndroidSdk {
@@ -79,61 +82,7 @@ function Ensure-AndroidSdk {
   Set-Content -Path $yes -Encoding ASCII -Value ((1..80 | ForEach-Object { 'y' }) -join "`r`n")
   Log 'Menerima lisensi Android SDK...'
   Run-Batch @("call `"$sdkm`" --sdk_root=`"$SdkRoot`" --licenses < `"$yes`"") 'sdk-licenses.log'
-  Log "Memasang paket SDK (platform, build-tools, NDK; pertama kali agak lama): $($SdkPackages -join ', ')"
+  Log "Memasang paket SDK: $($SdkPackages -join ', ')"
   $pk = ($SdkPackages | ForEach-Object { "`"$_`"" }) -join ' '
   Run-Batch @("call `"$sdkm`" --sdk_root=`"$SdkRoot`" $pk") 'sdk-install.log'
-  Set-UserEnv 'ANDROID_NDK_HOME' "$SdkRoot\ndk\$NdkVersion"
-}
-
-# Dipakai build: pastikan semuanya ada, kalau tidak beri pesan jelas.
-function Use-AndroidEnv {
-  $jdk = Find-Jdk17
-  if (-not $jdk) { throw 'JDK 17 tidak ditemukan. Jalankan setup-android.bat dulu.' }
-  $env:JAVA_HOME = $jdk; $env:Path = "$jdk\bin;$env:Path"
-  if (-not (Test-Path "$SdkRoot\platforms\android-33") -or -not (Test-Path "$SdkRoot\cmdline-tools\latest\bin\sdkmanager.bat")) { throw 'Android SDK belum lengkap. Jalankan setup-android.bat dulu.' }
-  $env:ANDROID_HOME = $SdkRoot; $env:ANDROID_SDK_ROOT = $SdkRoot
-  $env:ANDROID_NDK_HOME = "$SdkRoot\ndk\$NdkVersion"
-  if (-not (Test-Path $env:ANDROID_NDK_HOME)) { throw "NDK $NdkVersion tidak ditemukan. Jalankan setup-android.bat dulu." }
-  $env:Path = "$SdkRoot\platform-tools;$env:Path"
-}
-
-# Cordova 12 belum cocok dengan Node 22+. Untuk build Android dipakai Node 20 portabel (tidak mengubah Node bawaan sistem).
-function Use-Node20 {
-  $dir = "$Root\build-android\node20"
-  $exe = Get-ChildItem $dir -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-  if (-not $exe) {
-    Log 'Mengunduh Node.js 20 portabel khusus build Android (sekitar 30 MB)...'
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $zip = Join-Path $env:TEMP 'archne-node20.zip'
-    $ProgressPreference = 'SilentlyContinue'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip' -OutFile $zip -UseBasicParsing
-    Expand-Archive -Path $zip -DestinationPath $dir -Force
-    Remove-Item $zip -Force -ErrorAction SilentlyContinue
-    $exe = Get-ChildItem $dir -Recurse -Filter node.exe | Select-Object -First 1
-    if (-not $exe) { throw 'Node 20 portabel gagal diekstrak.' }
-  }
-  $env:Path = "$($exe.DirectoryName);$env:Path"
-  Log ('Build Android memakai node ' + (& node -v))
-}
-
-# Cordova butuh perintah `gradle` (di PATH atau Android Studio) hanya untuk membuat gradlew sekali. Tanpa Android Studio,
-# dipakai Gradle 7.6 portabel (versi yang diminta cordova-android 12.0.1); wrapper kemudian mengunduh distribusi resminya sendiri.
-function Use-Gradle {
-  $dir = "$Root\build-android\gradle"
-  $bat = Get-ChildItem $dir -Recurse -Filter gradle.bat -ErrorAction SilentlyContinue | Select-Object -First 1
-  if (-not $bat) {
-    Log 'Mengunduh Gradle 7.6 portabel untuk pembuatan wrapper (sekitar 120 MB)...'
-    New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    $zip = Join-Path $env:TEMP 'archne-gradle76.zip'
-    $ProgressPreference = 'SilentlyContinue'
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri 'https://services.gradle.org/distributions/gradle-7.6-bin.zip' -OutFile $zip -UseBasicParsing
-    Expand-Archive -Path $zip -DestinationPath $dir -Force
-    Remove-Item $zip -Force -ErrorAction SilentlyContinue
-    $bat = Get-ChildItem $dir -Recurse -Filter gradle.bat | Select-Object -First 1
-    if (-not $bat) { throw 'Gradle portabel gagal diekstrak.' }
-  }
-  $env:Path = "$($bat.DirectoryName);$env:Path"
-  Log "Gradle portabel: $($bat.DirectoryName)"
 }

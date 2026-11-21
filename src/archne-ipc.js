@@ -1,5 +1,4 @@
 'use strict';
-require('./archne-compat'); // tambalan API untuk Node 12 (Android); no-op di Node baru
 // Jembatan renderer <-> Core (v0.7.0 tahap 5a). Dipisah dari main.js supaya bisa dites tanpa Electron: semua yang menyentuh
 // Electron (ipcMain, dialog, shell, jendela) masuk lewat `deps`.
 //

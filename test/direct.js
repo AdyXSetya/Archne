@@ -52,10 +52,12 @@ const raw = (port, obj) => new Promise((res) => {
   fs.writeFileSync(path.join(src, 'nol.bin'), '');
   fs.writeFileSync(path.join(src, 'a', 'b', 'c', 'dalam.dat'), crypto.randomBytes(300000));
   fs.writeFileSync(path.join(src, 'a', 'unicode ✓ ñ.txt'), 'uni');
-  fs.writeFileSync(path.join(src, 'a', 'we?ird:name.txt'), 'karakter terlarang di Windows');
+  // Nama berisi ? dan : tidak bisa dibuat di sisi pengirim bila pengirimnya Windows; yang diuji adalah penerima menjernihkannya, jadi hanya dibuat di POSIX.
+  const weird = process.platform !== 'win32';
+  if (weird) fs.writeFileSync(path.join(src, 'a', 'we?ird:name.txt'), 'karakter terlarang di Windows');
   fs.writeFileSync(path.join(src, 'besar.bin'), crypto.randomBytes(5 * 1048576));
   try { fs.symlinkSync('/etc', path.join(src, 'tautan')); } catch {}
-  const srcMap = walk(src); delete srcMap['a/we?ird:name.txt']; srcMap['a/we_ird_name.txt'] = sha(path.join(src, 'a', 'we?ird:name.txt'));
+  const srcMap = walk(src); if (weird) { delete srcMap['a/we?ird:name.txt']; srcMap['a/we_ird_name.txt'] = sha(path.join(src, 'a', 'we?ird:name.txt')); }
 
   // ---- 0. aturan LAN ----
   assert.strictEqual(A._directOk('192.168.1.5'), true);

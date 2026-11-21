@@ -93,14 +93,14 @@ const sseEvents = (buf, name) => [...buf.matchAll(new RegExp('event: ' + name + 
   req.destroy(); await app.stop(); await B.stop(); await C.stop();
 
   // ================= 3. kontrak berkas Java / plugin / build =================
-  const svc = read('android/localplugins/archne-background/src/android/ArchneService.java');
-  const rcv = read('android/localplugins/archne-background/src/android/ArchneReceiver.java');
-  const bg = read('android/localplugins/archne-background/src/android/ArchneBackground.java');
-  const px = read('android/localplugins/archne-background/plugin.xml');
+  const svc = read('mobile/android/app/src/main/java/com/xyraori/archne/ArchneService.java');
+  const rcv = read('mobile/android/app/src/main/java/com/xyraori/archne/ArchneReceiver.java');
+  const bg = read('mobile/android/app/src/main/java/com/xyraori/archne/ArchneBackground.java');
+  const px = read('mobile/android/app/src/main/AndroidManifest.xml');
   const ipc = read('src/archne-ipc.js');
   assert(/MessagingStyle/.test(svc) && /setLargeIcon\(/.test(svc) && /Icon\.createWithBitmap/.test(svc) && /BitmapShader/.test(svc), 'gaya percakapan dengan foto bulat');
   assert(/RemoteInput\.Builder\(KEY_REPLY\)/.test(svc) && /ArchneLang\.s\(c, "reply"\)/.test(svc) && /ArchneLang\.s\(c, "mark_read"\)/.test(svc) && /ArchneLang\.s\(this, "decline"\)/.test(svc) && /ArchneLang\.s\(this, "answer"\)/.test(svc), 'tombol Balas, Tandai dibaca, Tolak, Jawab (lewat ArchneLang, bukan teks tetap)');
-  { const xid = read('android/localplugins/archne-background/src/android/res/values-in/archne_strings.xml'), xen = read('android/localplugins/archne-background/src/android/res/values/archne_strings.xml');
+  { const xid = read('mobile/android/app/src/main/res/values-in/archne_strings.xml'), xen = read('mobile/android/app/src/main/res/values/archne_strings.xml');
     for (const [k, a, b] of [['reply', 'Balas', 'Reply'], ['mark_read', 'Tandai dibaca', 'Mark as read'], ['decline', 'Tolak', 'Decline'], ['answer', 'Jawab', 'Answer']]) assert(xid.includes('name="archne_' + k + '">' + a + '<') && xen.includes('name="archne_' + k + '">' + b + '<'), 'teks tombol ' + k + ' (id + en)'); }
   assert(/FLAG_MUTABLE/.test(svc), 'PendingIntent balasan langsung harus mutable (Android 12+)');
   assert(/new Intent\(c, ArchneReceiver\.class\)/.test(svc), 'PendingIntent ke receiver eksplisit (wajib untuk mutable di Android 14)');
@@ -109,12 +109,9 @@ const sseEvents = (buf, name) => [...buf.matchAll(new RegExp('event: ' + name + 
   assert(/rpc\(ctx, "send", new JSONArray\(\)\.put\(text\)\.put\(key\)/.test(svc) && /rpc\(ctx, "callReject", new JSONArray\(\)\.put\(cid\)/.test(svc), 'urutan argumen sesuai (teks, ke) dan (cid)');
   assert(/EXTRA_ANSWER/.test(svc) && /openApp\(this, peer, cid, ID_CALL \+ 2\)/.test(svc), 'Jawab membuka aplikasi dengan id panggilan');
   assert(/o\.optString\("who"/.test(svc) && /o\.optString\("chat"/.test(svc) && /o\.optString\("from"/.test(svc) && /o\.optLong\("ts"/.test(svc) && /o\.has\("av"\)/.test(svc), 'membaca bidang baru dari event');
-  assert(/"takeAnswer"\.equals\(action\)/.test(bg) && /EXTRA_ANSWER/.test(bg), 'plugin: takeAnswer');
+  assert(/@PluginMethod\s+public void takeAnswer\(PluginCall/.test(bg) && /EXTRA_ANSWER/.test(bg), 'plugin: takeAnswer');
   assert(/<receiver android:name="com\.xyraori\.archne\.ArchneReceiver" android:exported="false" \/>/.test(px), 'receiver terdaftar dan tidak diekspor');
-  assert(/<source-file src="src\/android\/ArchneReceiver\.java" target-dir="src\/com\/xyraori\/archne" \/>/.test(px));
-  const rf = /<resource-file src="([^"]+)" target="app\/src\/main\/res\/drawable\/ic_stat_archne\.xml" \/>/.exec(px);
-  assert(rf && fs.existsSync(path.join(root, 'android/localplugins/archne-background', rf[1])) && /^src\//.test(rf[1]), 'ikon kecil ada, di bawah src/ (ikut hash plugin)');
-  assert(/<plugin id="archne-background" version="1\.(?:[3-9]|\d{2,})\.\d+"/.test(px), 'versi plugin 1.3+');
+  assert(fs.existsSync(path.join(root, 'mobile/android/app/src/main/res/drawable/ic_stat_archne.xml')), 'ikon kecil notifikasi ada di res/drawable');
   assert(/ACTION_READ/.test(rcv) && /ACTION_REPLY/.test(rcv) && /ACTION_DECLINE/.test(rcv) && /goAsync\(\)/.test(rcv) && /RemoteInput\.getResultsFromIntent/.test(rcv), 'receiver: tiga aksi, kerja jaringan di luar utas utama');
   for (const [name, code] of [['ArchneService', svc], ['ArchneReceiver', rcv], ['ArchneBackground', bg]]) {
     const bare = code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])+'/g, '');
@@ -130,48 +127,45 @@ const sseEvents = (buf, name) => [...buf.matchAll(new RegExp('event: ' + name + 
   assert(/VISIBILITY_SECRET/.test(og[0]) && /CATEGORY_SERVICE/.test(og[0]) && /setOngoing\(true\)/.test(og[0]) && /setOnlyAlertOnce\(true\)/.test(og[0]), 'ongoing, kategori layanan, tersembunyi di layar kunci, tanpa bunyi berulang');
   const ch = /NotificationChannel a = new NotificationChannel\(CH_SVC[\s\S]*?createNotificationChannel\(a\);/.exec(svc);
   assert(ch && /IMPORTANCE_MIN/.test(ch[0]) && /setSound\(null, null\)/.test(ch[0]) && /enableVibration\(false\)/.test(ch[0]) && /enableLights\(false\)/.test(ch[0]) && /setShowBadge\(false\)/.test(ch[0]) && /setLockscreenVisibility\(Notification\.VISIBILITY_SECRET\)/.test(ch[0]), 'channel layanan: prioritas minimum, senyap, tanpa badge, tersembunyi di layar kunci');
-  assert(/<plugin id="archne-background" version="1\.(?:[3-9]\.[1-9]|\d{2,}\.\d+)/.test(px) || /version="1\.[4-9]\./.test(px), 'plugin naik ke 1.3.1+ agar build memasang ulang');
   ok('notifikasi layanan minimal: tanpa tombol Berhenti, channel MIN senyap dan tersembunyi, ikon Archne');
   ok('kontrak Java/plugin: gaya percakapan + foto, Balas/Tandai dibaca/Tolak/Jawab, PendingIntent mutable+eksplisit, rpc ke fungsi yang ada, receiver terdaftar, kurung seimbang');
 
   // ================= 4. versi =================
-  const ver = JSON.parse(read('package.json')).version, avr = JSON.parse(read('android/package.json')).version;
-  const cfg = read('android/config.xml');
-  const cv = /<widget id="com\.xyraori\.archne" version="([^"]+)" android-versionCode="(\d+)"/.exec(cfg);
-  assert.strictEqual(avr, ver); assert.strictEqual(cv[1], ver);
+  const ver = JSON.parse(read('package.json')).version, avr = JSON.parse(read('mobile/package.json')).version;
+  const gr = read('mobile/android/app/build.gradle');
+  const cv = /versionCode (\d+)\s+versionName "([^"]+)"/.exec(gr);
+  assert(cv, 'versionCode/versionName di build.gradle');
+  assert.strictEqual(avr, ver); assert.strictEqual(cv[2], ver);
   const [a, b, c] = ver.split('.').map(Number);
-  assert.strictEqual(Number(cv[2]), a * 10000 + b * 100 + c, 'versionCode = mayor*10000 + minor*100 + patch (0.12.1 -> 1201)');
+  assert.strictEqual(Number(cv[1]), a * 10000 + b * 100 + c, 'versionCode = mayor*10000 + minor*100 + patch (0.12.1 -> 1201)');
   assert(a > 0 || b >= 15, 'rilis ini minimal 0.15.0');
-  ok('versi sama di package.json, android/package.json, config.xml (' + ver + ', versionCode ' + cv[2] + ')');
+  ok('versi sama di package.json, mobile/package.json, build.gradle (' + ver + ', versionCode ' + cv[1] + ')');
 
-  // ================= 5. halaman induk Android meneruskan "Jawab" ke UI =================
+  // ================= 5. halaman pembungkus meneruskan "Jawab" ke UI =================
   {
-    const html = read('android/www/index.html');
-    const src = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+    const { env } = require('./_mobilewrap');
     const ORIGIN = 'http://127.0.0.1:4321';
-    const run = (taken) => {
-      const doc = {}, win = {}, queue = [], execs = [];
-      const frame = { style: {}, contentWindow: { posted: [], postMessage(m, o) { this.posted.push(JSON.parse(JSON.stringify([m, o]))); } } }, chan = {}, msg = { style: {}, textContent: '' };
-      const ctx = {
-        document: { getElementById: (id) => (id === 'f' ? frame : msg), addEventListener: (t, f) => { doc[t] = f; } },
-        nodejs: { channel: { on: (t, f) => { chan[t] = f; }, post() {} }, start() {} },
-        cordova: { exec(okf, erf, plug, act, args) { execs.push(act); okf(taken[act] || ''); } },
-        setTimeout: (f) => { queue.push(f); return queue.length; }, setInterval: () => 0, clearInterval() {}, console,
-        addEventListener: (t, f) => { win[t] = f; },
-      };
-      ctx.window = ctx;
-      vm.createContext(ctx); vm.runInContext(src, ctx);
-      doc.deviceready(); chan.ready({ port: 4321, token: 'tok' });
-      frame.onload(); while (queue.length) queue.shift()();
-      return { frame, execs, sent: () => frame.contentWindow.posted };
+    const run = async (taken) => {
+      const e = await env((p, act) => (act === 'takeChat' ? { key: taken.takeChat || '' } : act === 'takeAnswer' ? { cid: taken.takeAnswer || '' } : { value: 'ok' }));
+      e.frame.onload(); for (const t of e.timers) if (t.ms === 900) t.f(); await e.flush();
+      return e;
     };
-    const e1 = run({ takeChat: 'abcdef0123456789', takeAnswer: 'cid1234567890' });
-    assert(e1.execs.includes('takeChat') && e1.execs.includes('takeAnswer'));
+    const e1 = await run({ takeChat: 'abcdef0123456789', takeAnswer: 'cid1234567890' });
+    assert(e1.calls.some((c) => c.act === 'takeChat') && e1.calls.some((c) => c.act === 'takeAnswer'));
     assert.deepStrictEqual(e1.sent().filter((x) => x[0].archne === 'open-chat'), [[{ archne: 'open-chat', key: 'abcdef0123456789' }, ORIGIN]]);
     assert.deepStrictEqual(e1.sent().filter((x) => x[0].archne === 'answer-call'), [[{ archne: 'answer-call', cid: 'cid1234567890' }, ORIGIN]], 'Jawab diteruskan ke iframe, hanya ke origin-nya');
-    const e2 = run({});
+    // Dikirim ulang tiap 700 ms sampai UI mengaku sudah menjawab (UI bisa sedang dimuat ulang saat Jawab ditekan)
+    const iv = e1.intervals.filter((x) => x.ms === 700 && !x.dead);
+    assert.strictEqual(iv.length, 1, 'satu interval kirim ulang answer-call');
+    iv[0].f(); iv[0].f();
+    assert.strictEqual(e1.sent().filter((x) => x[0].archne === 'answer-call').length, 3, 'dikirim ulang selama belum ada konfirmasi');
+    await e1.post({ archne: 'answer-done' });
+    assert(e1.intervals.filter((x) => x.ms === 700)[0].dead === true, 'answer-done menghentikan kirim ulang');
+    const n3 = e1.sent().filter((x) => x[0].archne === 'answer-call').length;
+    iv[0].f(); assert.strictEqual(e1.sent().filter((x) => x[0].archne === 'answer-call').length, n3, 'tidak ada kiriman setelah dihentikan');
+    const e2 = await run({});
     assert.strictEqual(e2.sent().filter((x) => x[0].archne === 'answer-call' || x[0].archne === 'open-chat').length, 0, 'tanpa ketukan notifikasi: tidak ada pesan');
-    ok('halaman induk: takeAnswer diteruskan sebagai answer-call ke iframe; tanpa ketukan tidak ada yang dikirim');
+    ok('halaman pembungkus: takeAnswer diteruskan sebagai answer-call ke iframe; tanpa ketukan tidak ada yang dikirim');
   }
 
   // ================= 6. UI hanya menjawab panggilan yang sedang berdering =================
@@ -179,7 +173,7 @@ const sseEvents = (buf, name) => [...buf.matchAll(new RegExp('event: ' + name + 
     const ui = require('./_src').htmlSrc();
     assert(/d\.archne === 'answer-call' && typeof d\.cid === 'string'/.test(ui) && /e\.source !== window\.parent/.test(ui), 'pesan answer-call hanya dari induk dan bertipe string');
     assert(/callCtl\.sync\(S\.call(, S\.vc(, [^;]*)?)?\); tryAnswer\(\)/.test(ui), 'dicoba lagi tiap sinkronisasi (halaman baru dimuat)');
-    const fn = /let wantAnswer = null;\nfunction tryAnswer\(\) \{[\s\S]*?\n\}\n/.exec(ui)[0];
+    const fn = /let wantAnswer = null, answeredCid = null;\nfunction tellAnswerDone\(\)[^\n]*\nfunction tryAnswer\(\) \{[\s\S]*?\n\}\n/.exec(ui)[0];
     const mk = (cur) => { const ctx = { Date, accepted: 0, callCtl: { cur, accept() { ctx.accepted++; } } }; vm.createContext(ctx); vm.runInContext(fn, ctx); return ctx; };
     const ring = () => ({ cid: 'c1', dir: 'in', phase: 'ringing' });
     let x = mk(ring()); vm.runInContext('tryAnswer()', x); assert.strictEqual(x.accepted, 0, 'tanpa permintaan: tidak menjawab');

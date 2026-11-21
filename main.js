@@ -117,7 +117,8 @@ async function boot() {
   ses.setPermissionCheckHandler((wc, permission, origin, details) => wc === win.webContents && allowMedia(permission, { url: details && details.requestingUrl, origin, mediaType: details && details.mediaType }, rendererDir));
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(rendererDir, 'archne-index.html'));
-  win.webContents.on('console-message', (_e, level, msg) => log('renderer: ' + msg));
+  // Electron 35+: argumen tunggal berisi {level, message, ...}; bentuk lama (e, level, msg) sudah deprecated. Dua-duanya ditangani.
+  win.webContents.on('console-message', (e, _level, msg) => log('renderer: ' + (e && typeof e.message === 'string' ? e.message : msg)));
   log('window ready, log: ' + logFile);
 }
 

@@ -10,7 +10,7 @@ const fs = require('fs');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const { Transform } = require('stream');
-const { pipeline } = require('./archne-compat');
+const { pipeline } = require('stream/promises');
 
 const MB = 1048576;
 const FORMAT = 1;

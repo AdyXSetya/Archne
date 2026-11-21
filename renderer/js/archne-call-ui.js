@@ -37,9 +37,119 @@ function mountVideos(v) {
   for (const [k, el] of [...vidEls]) if (!seen.has(k)) { try { el.pause(); el.srcObject = null; if (el.parentNode) el.parentNode.removeChild(el); } catch (x) {} vidEls.delete(k); }
 }
 // </mountVideos>
+// <pip>
+// Jendela Picture-in-Picture memuat SATU kartu video: lawan bicara (1-1; kameranya mati = kameraku), atau yang sedang bicara (grup / channel).
+// Kartu lain tetap ada di DOM (supaya <video> tidak dicopot), hanya disembunyikan CSS; kartu terpilih diberi kelas pipsel. LC.pickPip memilih.
+let pipSt = null, pipMeter = null, pipTimer = null, pipShown = false;
+// Jendela PiP menurut kabar native, atau (cadangan bila kabar tidak sampai) viewport sangat kecil selagi siaga: PiP selalu sempit/pendek, HP biasa tidak.
+function pipSmall() { try { return window.innerWidth < 300 || window.innerHeight < 250; } catch (x) { return false; } }
+function pipCheck() {
+  const on = !!(nbridge && (nbridge.pipOn || (nbridge.pipWant && pipSmall())));
+  if (on === pipShown) return;
+  pipShown = on;
+  const b = bodyCl(); if (b) on ? b.add('archne-pip') : b.remove('archne-pip');
+  on ? pipStart() : pipStop();
+}
+function pipApply() {
+  try {
+    const root = $('callov');
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    const tiles = [...root.querySelectorAll('.cvt[data-vkey]')];
+    if (!pipShown) { for (const t of tiles) t.classList.remove('pipsel'); return; }
+    const cands = tiles.filter((t) => t.classList.contains('hasv')).map((t) => t.dataset.vkey);
+    let levels = {};
+    if (pipMeter && cands.filter((k) => k !== 'me').length > 1) levels = pipMeter.levels(); // hanya bila ada beberapa orang berkamera (1-1 tidak perlu mengukur)
+    pipSt = LC.pickPip(cands, levels, pipSt, Date.now());
+    const want = pipSt.key || (tiles[0] && tiles[0].dataset.vkey) || null;
+    for (const t of tiles) t.classList.toggle('pipsel', t.dataset.vkey === want);
+  } catch (x) {}
+}
+function pipSync() { // dipanggil tiap jeda: pasang pengamat suara untuk kartu berkamera (selain aku, bila ada yang lain)
+  try {
+    if (!pipMeter || !callCtl) return;
+    const map = {};
+    const root = $('callov'), tiles = root && root.querySelectorAll ? [...root.querySelectorAll('.cvt.hasv[data-vkey]')] : [];
+    for (const t of tiles) { const k = t.dataset.vkey; if (k === 'me') continue; const s = callCtl.remoteAudio(k); if (s) map[k] = s; } // kameraku tidak ikut dipilih bila ada orang lain berkamera
+    pipMeter.sync(map);
+  } catch (x) {}
+}
+function pipStart() {
+  pipSt = null;
+  if (!pipMeter) pipMeter = LC.levelMeter(window.AudioContext || window.webkitAudioContext);
+  if (!pipTimer) pipTimer = setInterval(() => { pipSync(); pipApply(); }, 400);
+  pipSync(); pipApply();
+}
+function pipStop() {
+  if (pipTimer) { clearInterval(pipTimer); pipTimer = null; }
+  if (pipMeter) { pipMeter.stop(); pipMeter = null; }
+  pipSt = null; pipApply();
+}
+// </pip>
+// <speaking>
+// Siapa yang sedang bicara (gaya Discord): bingkai foto profil dan kartu jadi hijau. Selama panggilan berjalan, suara tiap peserta (dan mikku bila tidak dibisukan)
+// diukur lewat levelMeter; elemen bertanda data-vkey (kartu video, 'me' = aku) atau data-peer (baris daftar / avatar besar, id-ku = aku) diberi kelas "speaking".
+let spkMeter = null, spkTimer = null, spkOn = new Set();
+const SPK_ON = 0.04, SPK_OFF = 0.02; // histeresis supaya bingkai tidak berkedip
+function spkApply() {
+  try {
+    const root = $('callov'); if (!root || typeof root.querySelectorAll !== 'function') return;
+    const meId = S && S.me ? S.me.id : '';
+    for (const el of root.querySelectorAll('[data-vkey],[data-peer]')) {
+      let k = el.dataset.vkey || el.dataset.peer; if (meId && k === meId) k = 'me';
+      el.classList.toggle('speaking', spkOn.has(k));
+    }
+  } catch (x) {}
+}
+function spkTick() {
+  try {
+    if (!spkMeter || !callCtl || !callCtl.cur) return;
+    const map = {}, a = callCtl.localAudio(); if (a) map.me = a;
+    for (const l of callCtl.cur.legs || []) { if (!l || !l.peer || l.state !== 'active') continue; const s = callCtl.remoteAudio(l.peer); if (s) map[l.peer] = s; }
+    spkMeter.sync(map);
+    const lv = spkMeter.levels(), next = new Set();
+    for (const k of Object.keys(lv)) if (lv[k] >= (spkOn.has(k) ? SPK_OFF : SPK_ON)) next.add(k);
+    spkOn = next; spkApply();
+  } catch (x) {}
+}
+function spkSet(on) {
+  if (on) {
+    if (!spkMeter) spkMeter = LC.levelMeter(window.AudioContext || window.webkitAudioContext);
+    if (spkMeter && !spkTimer) spkTimer = setInterval(spkTick, 200);
+  } else {
+    if (spkTimer) { clearInterval(spkTimer); spkTimer = null; }
+    if (spkMeter) { spkMeter.stop(); spkMeter = null; }
+    spkOn = new Set();
+  }
+}
+// </speaking>
+// <back>
+// Tombol Kembali perangkat (Android): urutan paling atas dulu. Dialog / lembar (.mbg) ditutup lewat tombol Batal / Tutup-nya sendiri, jadi keadaan UI tetap konsisten.
+// Layar panggilan ada di atas dialog (z-index): lembar "Tambah orang" ditutup, kartu yang diperbesar dikecilkan, lalu panggilan dikecilkan jadi bar (seperti WhatsApp).
+// Yang tidak ditangani (false): cangkang mundur lewat riwayat (chat -> daftar, penampil gambar) atau menyembunyikan aplikasi bila sudah di dasar.
+function backModal() {
+  try {
+    const vis = (el) => { try { return window.getComputedStyle(el).display !== 'none'; } catch (x) { return false; } };
+    const dlg = $('dlg'), all = [...document.querySelectorAll('.mbg')].filter(vis);
+    const top = dlg && vis(dlg) ? dlg : all[all.length - 1];
+    if (!top) return false;
+    const b = top.querySelector('#dlgno,#vcancel,#mclose,[id$="cancel"],[id$="close"],[id$="no"]') || [...top.querySelectorAll('button.sec')].pop();
+    if (b) b.click();
+    return true; // dialog terbuka: Kembali tidak boleh meninggalkan chat di belakangnya
+  } catch (x) { return false; }
+}
+function uiBack() {
+  try {
+    const v = callCtl && callCtl.view();
+    if (v && callPick) { callPick = false; callCtl._render(); return true; }
+    if (v && vidFocus && LC.videoView(v)) { vidFocus = null; callBar = true; callCtl._render(); return true; }
+    if (v && LC.canMinimize(v) && !callMin) { callMin = true; callPick = false; callCtl._render(); return true; }
+  } catch (x) {}
+  return backModal();
+}
+// </back>
 // Balik kamera hanya ditawarkan di perangkat sentuh (HP/tablet, termasuk cangkang Android): di desktop biasanya satu webcam, jadi tombolnya tidak berguna.
 function canFlipCam() { try { return !!(nbridge || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)); } catch (x) { return false; } }
-let callCtl = null, ringer = null, nbridge = null, callPick = false, callMin = false, vidFocus = null, callWasBusy = false; // callPick: lembar "Tambah orang" sedang terbuka; callMin: layar panggilan dikecilkan jadi bar
+let callCtl = null, ringer = null, nbridge = null, callPick = false, callMin = false, vidFocus = null, callWasBusy = false, callBar = true; // callBar: tombol layar panggilan tampil (ketuk video yang diperbesar = tutup/buka, seperti WhatsApp); callPick: lembar "Tambah orang" sedang terbuka; callMin: layar panggilan dikecilkan jadi bar
 if (LC && LC.supported(window) && window.api.onCall) {
   ringer = LC.makeRinger(window.AudioContext || window.webkitAudioContext);
   nbridge = LC.nativeBridge(window); // di cangkang Android (iframe): izin mikrofon, mode panggilan, speaker lewat halaman induk
@@ -57,10 +167,16 @@ if (LC && LC.supported(window) && window.api.onCall) {
         const vv = LC.videoView(v);
         if (!vv || ovHtml !== ovLast) $('callov').innerHTML = ovHtml;
         ovLast = vv ? ovHtml : null;
+        const root0 = $('callov');
         mountVideos(v);
-        $('callov').className = mini ? 'mini' : '';
+        pipApply(); // jendela PiP: kartu terpilih tetap ditandai setelah HTML dirender ulang
+        if (!vv) callBar = true; // tanpa tampilan video tombol selalu ada
+        const hideBar = !!(vv && !mini && !callBar && root0 && root0.querySelector && root0.querySelector('.cvg.focus')); // tombol hanya bisa disembunyikan selagi satu kartu diperbesar (layar penuh)
+        $('callov').className = mini ? 'mini' : hideBar ? 'nobar' : '';
+        spkSet(!!v); spkApply();
         $('callov').style.display = v ? 'flex' : 'none';
         const b = bodyCl(); if (b) { v && !mini ? b.add('incall') : b.remove('incall'); mini ? b.add('callmin') : b.remove('callmin'); }
+        if (nbridge) { nbridge.pip(!!(vv && !mini && v && v.phase === 'active')); pipCheck(); } // siaga Picture-in-Picture: hanya selagi video tampil, layar penuh, dan panggilan aktif
         if (callWasBusy !== !!v) { callWasBusy = !!v; paintCallBusy(); } // mulai / selesai panggilan: tombol telepon dan Masuk channel ikut berubah
       },
       ring(k) { if (!ringer) return; k ? ringer.start(k) : ringer.stop(); },
@@ -74,7 +190,10 @@ if (LC && LC.supported(window) && window.api.onCall) {
   // Android (cangkang): aplikasi ke latar belakang / kembali. Datang dari cangkang lewat jembatan dan dari visibilitas halaman sebagai cadangan; aman dipanggil dua kali.
   if (nbridge) {
     nbridge.onApp = (hidden) => callCtl.appHidden(hidden);
-    document.addEventListener('visibilitychange', () => callCtl.appHidden(document.visibilityState === 'hidden'));
+    nbridge.onBack = () => uiBack(); // tombol Kembali perangkat
+    nbridge.onPip = () => pipCheck(); // jendela kecil: satu kartu video, tanpa tombol
+    window.addEventListener('resize', pipCheck); // cadangan bila kabar native tidak sampai
+    document.addEventListener('visibilitychange', () => { if (pipShown) return; callCtl.appHidden(document.visibilityState === 'hidden'); }); // di jendela PiP aplikasi masih tampil; saat jendela ditutup, cangkang yang mengabari
   }
   const callRerender = () => { if (callCtl && callCtl.cur) callCtl._render(); };
   $('callov').onclick = async (e) => {
@@ -93,8 +212,12 @@ if (LC && LC.supported(window) && window.api.onCall) {
     const a = b.dataset.cact;
     if (a === 'min') { callMin = true; callPick = false; callRerender(); return; }
     if (a === 'max') { callMin = false; callRerender(); return; }
-    if (a === 'focus') { vidFocus = b.dataset.vfocus || null; callRerender(); return; }
-    if (a === 'unfocus') { vidFocus = null; callRerender(); return; }
+    if (a === 'focus') { // ketuk kartu = perbesar dan sembunyikan tombol (layar penuh); ketuk kartu yang sudah diperbesar = tombol tutup/buka
+      const k = b.dataset.vfocus || null;
+      if (k && vidFocus === k) callBar = !callBar; else { vidFocus = k; callBar = false; }
+      callRerender(); return;
+    }
+    if (a === 'unfocus') { vidFocus = null; callBar = true; callRerender(); return; }
     if (a === 'accept') callCtl.accept(); else if (a === 'reject') callCtl.reject(); else if (a === 'hang') callCtl.hangup(); else if (a === 'mute') callCtl.mute(); else if (a === 'deafen') callCtl.deafen(); else if (a === 'speaker') callCtl.speaker(); else if (a === 'cam') callCtl.camera(); else if (a === 'flip') callCtl.flipCamera();
     else if (a === 'add') {
       const v = callCtl.view();
@@ -105,7 +228,7 @@ if (LC && LC.supported(window) && window.api.onCall) {
   $('callov').addEventListener('keydown', (e) => { // bar kecil bisa dibuka dengan Enter / Spasi
     const t = e.target;
     if ((e.key === 'Enter' || e.key === ' ') && t && t.classList && t.classList.contains('cmb')) { e.preventDefault(); callMin = false; callRerender(); }
-    if ((e.key === 'Enter' || e.key === ' ') && t && t.classList && t.classList.contains('cvt') && t.dataset && t.dataset.vfocus) { e.preventDefault(); vidFocus = t.dataset.vfocus; callRerender(); } // kartu video diperbesar dengan papan ketik
+    if ((e.key === 'Enter' || e.key === ' ') && t && t.classList && t.classList.contains('cvt') && t.dataset && t.dataset.vfocus) { e.preventDefault(); vidFocus = t.dataset.vfocus; callBar = false; callRerender(); } // kartu video diperbesar dengan papan ketik
   });
   setInterval(() => { const el = $('calltime'); if (el && callCtl.cur && callCtl.cur.phase === 'active') el.textContent = LC.fmtDur(callCtl.elapsed()); }, 1000);
 }

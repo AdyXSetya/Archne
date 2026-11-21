@@ -157,9 +157,9 @@ const clickView = (t, pid, mid) => t.els.pgmodal.h.click({ target: { closest: ()
     assert.strictEqual(E.ivt.textContent, 'dua.png (2/3)'); assert(E.ivprev.style.display === '' && E.ivnext.style.display === '' && !E.ivprev.disabled && !E.ivnext.disabled, 'kedua tombol aktif di tengah');
     E.ivnext.onclick(); await sleep(5);
     assert.deepStrictEqual(t.calls2().map((c) => c[3]), [MID2, M3], 'berikutnya = gambar ke-3 (token baru)'); assert.strictEqual(E.ivimg.src, 'archne-media://m/' + toks[M3]); assert.strictEqual(E.ivt.textContent, 'tiga.png (3/3)');
-    assert(E.ivnext.disabled && !E.ivprev.disabled, 'di ujung: berikutnya nonaktif'); E.ivnext.onclick(); await sleep(5); assert.strictEqual(t.calls2().length, 2, 'lewat ujung: tidak meminta apa pun');
-    assert.strictEqual(key('ArrowLeft'), 1); await sleep(5); assert.strictEqual(E.ivt.textContent, 'dua.png (2/3)', 'panah kiri'); assert.strictEqual(key('ArrowLeft'), 1); await sleep(5); assert.strictEqual(E.ivt.textContent, 'satu.png (1/3)');
-    assert(E.ivprev.disabled, 'di awal: sebelumnya nonaktif'); const n = t.calls2().length; key('ArrowLeft'); await sleep(5); assert.strictEqual(t.calls2().length, n, 'lewat awal: diam');
+    assert(!E.ivnext.disabled && !E.ivprev.disabled, 'di ujung: berikutnya tetap aktif (navigasi berputar)'); E.ivnext.onclick(); await sleep(5); assert.strictEqual(E.ivt.textContent, 'satu.png (1/3)', 'lewat ujung: berputar ke gambar pertama'); assert.strictEqual(t.calls2().length, 3, 'berputar meminta token baru');
+    assert.strictEqual(key('ArrowLeft'), 1); await sleep(5); assert.strictEqual(E.ivt.textContent, 'tiga.png (3/3)', 'panah kiri dari yang pertama: berputar ke terakhir'); assert.strictEqual(key('ArrowLeft'), 1); await sleep(5); assert.strictEqual(E.ivt.textContent, 'dua.png (2/3)', 'panah kiri'); assert.strictEqual(key('ArrowLeft'), 1); await sleep(5); assert.strictEqual(E.ivt.textContent, 'satu.png (1/3)');
+    assert(!E.ivprev.disabled, 'di awal: sebelumnya tetap aktif (navigasi berputar)');
     key('ArrowRight'); await sleep(5); assert.strictEqual(E.ivt.textContent, 'dua.png (2/3)', 'panah kanan');
     assert.strictEqual(t.hist.pushes, 1, 'berpindah tidak menumpuk riwayat'); assert.strictEqual(t.run('ivPg.mediaId'), MID2);
     // gagal di tengah: coba lagi tetap di gambar yang sama dan tetap bisa berpindah

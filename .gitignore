@@ -1,6 +1,12 @@
 node_modules/
 dist/
 logs/
-build-android/
 debug-report.txt
 *.tmp
+
+# Mobile (Capacitor)
+mobile/node_modules/
+mobile/www/
+*.jks
+*.keystore
+keystore.properties

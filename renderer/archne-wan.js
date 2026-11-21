@@ -115,7 +115,7 @@
       const attach = () => {
         const native = useNative;
         const co = {
-          clientId: 'archne-' + myId + '-' + sid.slice(0, 8), clean: true, keepalive: 30, reconnectPeriod: 3000, connectTimeout: native || !opts.nativeWs ? 15000 : 10000,
+          clientId: 'archne-' + myId + '-' + sid.slice(0, 8), clean: true, keepalive: 30, reconnectPeriod: 3000, reconnectOnConnackError: true, connectTimeout: native || !opts.nativeWs ? 15000 : 10000,
           will: { topic: will.topic, payload: will.payload, qos: 1, retain: true },
         };
         if (native) co.createWebsocket = (u, p) => opts.nativeWs(u, p, dbg);

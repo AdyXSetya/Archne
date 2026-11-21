@@ -84,7 +84,7 @@ const HEART = '\u2764\uFE0F', SMILE = '\u263A\uFE0F';
   ok('fuzz 40.000 masukan: tak melempar, idempoten, ≤10 code point, ' + accepted + ' diterima' + (seg ? ', semuanya SATU grafem menurut Intl.Segmenter' : ' (Intl.Segmenter tak ada: pembanding dilewati)') + '; 100 pasangan tempel ditolak');
 }
 
-// 4. tanpa ICU: sumber modul tidak memakai \p{...}, Intl, normalize, Segmenter (nodejs-mobile Node 12)
+// 4. tanpa ICU: sumber modul tidak memakai \p{...}, Intl, normalize, Segmenter (runtime Node di HP tanpa ICU)
 {
   const code = fs.readFileSync(path.join(__dirname, '..', 'src', 'archne-reactions.js'), 'utf8').split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
   for (const bad of [/\\p\{/, /\\P\{/, /\bIntl\b/, /\.normalize\(/, /Segmenter/, /matchAll\(/, /\bstructuredClone\b/, /\?\?=|\|\|=|&&=/, /\.at\(/, /\.flat\(/, /\.replaceAll\(/])

@@ -1,7 +1,0 @@
-{
-  "name": "archne-background",
-  "version": "1.0.0",
-  "private": true,
-  "description": "Plugin lokal Archne",
-  "cordova": { "id": "archne-background", "platforms": ["android"] }
-}

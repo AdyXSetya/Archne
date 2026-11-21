@@ -105,11 +105,11 @@ assert(/#dxscanbar\{display:none/.test(fs.readFileSync(path.join(root, 'renderer
 ok('2e: bilah pemindaian + tombol Batalkan memanggil dxCancelScan(job aktif); batal bukan galat');
 
 // ---- 9. folder terima bawaan: PC Windows = <drive sistem>\file_transfer; Android = Download/file_transfer (disalin lewat MediaStore) ----
-const mainJs = fs.readFileSync(path.join(root, 'main.js'), 'utf8'), andMain = fs.readFileSync(path.join(root, 'android', 'www', 'nodejs-project', 'main.js'), 'utf8');
-const andIdx = fs.readFileSync(path.join(root, 'android', 'www', 'index.html'), 'utf8'), javaDl = fs.readFileSync(path.join(root, 'android', 'localplugins', 'archne-downloads', 'src', 'android', 'ArchneDownloads.java'), 'utf8');
+const mainJs = fs.readFileSync(path.join(root, 'main.js'), 'utf8'), andMain = fs.readFileSync(path.join(root, 'mobile', 'shell', 'main.js'), 'utf8');
+const andIdx = fs.readFileSync(path.join(root, 'mobile', 'shell', 'index.html'), 'utf8'), javaDl = fs.readFileSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'xyraori', 'archne', 'ArchneDownloads.java'), 'utf8');
 assert(/process\.platform !== 'win32'/.test(mainJs) && /'file_transfer'/.test(mainJs) && /directDir: directDefaultDir\(\) \|\| undefined/.test(mainJs), 'main.js: Windows memakai <drive>\\file_transfer, selain itu bawaan Core');
 assert(/on\('direct_file'/.test(andMain) && /sub: 'file_transfer'/.test(andMain) && /directShown/.test(andMain), 'Android: tiap berkas Kirim Langsung disalin ke Download/file_transfer');
-assert(/info\.sub/.test(andIdx) && /\[info\.path, info\.name, mime, sub\]/.test(andIdx), 'index.html Android meneruskan subfolder ke plugin');
+assert(/info\.sub/.test(andIdx) && /path: info\.path, name: info\.name, mime: mime, sub: sub/.test(andIdx), 'index.html Android meneruskan subfolder ke plugin');
 assert(/cleanSub/.test(javaDl) && /RELATIVE_PATH, sub\.isEmpty\(\)/.test(javaDl) && /equals\("\.\."\)/.test(javaDl), 'plugin: subfolder dibersihkan (tanpa .. / kosong) sebelum dipakai');
 ok('folder bawaan: C:\\file_transfer (Windows) dan Download/file_transfer (Android) terkunci di kode; subfolder plugin dibersihkan');
 
@@ -119,12 +119,12 @@ assert(/api\.dxUpload = async \(job, file, signal\)/.test(apiHttp) && /dxupload\
 assert(/copy = !S\.canDirect && !!S\.canDirectCopy/.test(js) && /api\.dxUpload\(job,/.test(js) && /dxCopyAc\.abort\(\)/.test(js), 'archne-direct.js: jalur salin dipakai hanya bila tak ada pemilih berpath; batal menghentikan unggahan');
 assert(!/dxCopyMax/.test(js), 'tanpa batas ukuran (hanya penyimpanan HP yang membatasi)');
 assert(/S\.canDirect \? one\('dxfolderbtn'/.test(rend), 'folder tidak ditawarkan di HP (tidak ada pemilih folder)');
-const plugXml = fs.readFileSync(path.join(root, 'android', 'localplugins', 'archne-downloads', 'plugin.xml'), 'utf8');
+const plugXml = fs.readFileSync(path.join(root, 'mobile', 'android', 'app', 'src', 'main', 'AndroidManifest.xml'), 'utf8');
 assert(/copy && dxNat\.pick/.test(js) && /action: 'dxpick'/.test(js) && /d\.pick === true/.test(js), 'archne-direct.js: bila cangkang bisa memilih berpath, berkas dikirim dari lokasi aslinya');
-assert(/"access"\.equals\(action\)/.test(javaDl) && /"askAccess"\.equals\(action\)/.test(javaDl) && /"pick"\.equals\(action\)/.test(javaDl) && /ACTION_OPEN_DOCUMENT/.test(javaDl) && /EXTRA_ALLOW_MULTIPLE/.test(javaDl), 'plugin: access/askAccess/pick ada, pemilih sistem banyak berkas');
+assert(/@PluginMethod\s+public void access\(PluginCall/.test(javaDl) && /@PluginMethod\s+public void askAccess\(PluginCall/.test(javaDl) && /@PluginMethod\s+public void pick\(PluginCall/.test(javaDl) && /ACTION_OPEN_DOCUMENT/.test(javaDl) && /EXTRA_ALLOW_MULTIPLE/.test(javaDl), 'plugin: access/askAccess/pick ada, pemilih sistem banyak berkas');
 assert(/isExternalStorageManager/.test(javaDl) && /ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION/.test(javaDl) && /MANAGE_EXTERNAL_STORAGE/.test(plugXml), 'plugin: izin akses semua berkas (Android 11+) dideklarasikan dan diminta');
 assert(/pathOrCopy/.test(javaDl) && /canRead\(\)/.test(javaDl) && /externalstorage\.documents/.test(javaDl), 'plugin: path asli dipakai bila terbaca, selain itu disalin ke dxout');
-assert(/dxout: app\.core\._dxTmpRoot\(\)/.test(andMain), 'inti memberi tahu cangkang folder dxout (yang dibersihkan Core)');
+assert(/dxout: rt\.core\._dxTmpRoot\(\)/.test(andMain), 'inti memberi tahu cangkang folder dxout (yang dibersihkan Core)');
 ok('HP: jalur salin ke cache (dxUpload) hanya tanpa pemilih berpath, tanpa batas ukuran, ada batal, tanpa tombol folder');
 
 console.log('\n' + pass + ' tes Kirim Langsung UI OK');

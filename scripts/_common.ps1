@@ -43,8 +43,13 @@ function Run-Logged($cmd, $logName) {
 
 function Ensure-Deps {
   # resedit dipakai scripts\after-pack.js untuk menanam ikon ke .exe; folder node_modules lama (sebelum ikon) belum punya.
-  if (-not (Test-Path "$Root\node_modules\electron\dist") -or -not (Test-Path "$Root\node_modules\resedit")) {
+  if (-not (Test-Path "$Root\node_modules\electron\package.json") -or -not (Test-Path "$Root\node_modules\resedit")) {
     Log 'Memasang dependensi (npm install, pertama kali agak lama)...'
     Run-Logged 'npm.cmd install --no-audit --no-fund' 'npm-install.log'
   } else { Log 'Dependensi sudah ada.' }
+  # Electron 42+: npm install tidak mengunduh binary Electron lagi; unduh di sini supaya galat jaringan/antivirus terlihat jelas.
+  if (-not (Test-Path "$Root\node_modules\electron\dist\electron.exe")) {
+    Log 'Mengunduh binary Electron...'
+    Run-Logged 'npx.cmd install-electron --no' 'electron-download.log'
+  }
 }

@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 const { Transform } = require('stream');
-const { pipeline } = require('./archne-compat');
+const { pipeline } = require('stream/promises');
 const { readHead } = require('./archne-xfer');
 const { ek } = require('./core/archne-ecode'); // i18n (E8)
 

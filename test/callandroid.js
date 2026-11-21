@@ -1,6 +1,6 @@
 'use strict';
 // Tes panggilan suara untuk cangkang Android (v0.13.0 tahap 4): jembatan UI <-> halaman induk, sesi audio di Controller, halaman induk
-// (android/www/index.html) dijalankan di vm dengan Cordova palsu, dan kontrak berkas plugin/manifest/skrip build.
+// (mobile/shell/index.html) dijalankan di vm dengan Capacitor palsu, dan kontrak berkas plugin/manifest.
 // Yang TIDAK bisa dites di sini: Java (tidak ada JDK/Android SDK), WebView, mikrofon, rute earpiece/speaker. Lihat README.md bagian 6 (Manual tes).
 const fs = require('fs'), path = require('path'), vm = require('vm'), assert = require('assert');
 const LC = require('../renderer/archne-call');
@@ -37,7 +37,7 @@ function timers() {
     b.hello();
     assert.deepStrictEqual(parent.posted.pop()[0], { archne: 'native', action: 'hello', id: 0 });
 
-    { // aplikasi ke latar belakang / kembali (cangkang meneruskan pause/resume Cordova)
+    { // aplikasi ke latar belakang / kembali (cangkang meneruskan pause/resume Capacitor)
       const seen = [];
       assert.strictEqual(b.onApp, null);
       w.send({ archne: 'native-app', state: 'background' }); // belum ada pendengar: tidak error
@@ -49,6 +49,23 @@ function timers() {
       b.onApp = () => { throw new Error('boom'); };
       w.send({ archne: 'native-app', state: 'background' }); // pendengar yang error tidak merusak jembatan
       b.onApp = null;
+    }
+    { // Picture-in-Picture: siaga hanya dikirim saat berubah; kejadian pip dari induk memperbarui pipOn dan memanggil onPip
+      parent.posted.length = 0;
+      b.pip(true); b.pip(true);
+      assert.strictEqual(parent.posted.length, 1, 'siaga dikirim sekali');
+      assert.deepStrictEqual(parent.posted[0][0], { archne: 'native', action: 'pip', id: 0, on: true });
+      b.pip(false); assert.strictEqual(parent.posted.pop()[0].on, false);
+      parent.posted.length = 0;
+      const seen = [];
+      b.onPip = (on) => seen.push(on);
+      w.send({ archne: 'native-app', state: 'pip', on: true }); assert.strictEqual(b.pipOn, true);
+      w.send({ archne: 'native-app', state: 'pip', on: false }); assert.strictEqual(b.pipOn, false);
+      w.send({ archne: 'native-app', state: 'pip', on: true }, {}); // bukan dari induk: diabaikan
+      assert.deepStrictEqual(seen, [true, false]);
+      b.onPip = () => { throw new Error('boom'); };
+      w.send({ archne: 'native-app', state: 'pip', on: true }); // pendengar yang error tidak merusak jembatan
+      b.onPip = null; b.pipOn = false;
     }
     const p1 = b.ask('call-begin');
     const m1 = parent.posted.pop()[0];
@@ -189,141 +206,120 @@ function timers() {
     ok('layar panggilan: tombol speaker hanya dengan cangkang dan setelah berdering');
   }
 
-  // ---------- 4. halaman induk Android dijalankan di vm ----------
+  // ---------- 4. halaman pembungkus Capacitor dijalankan di vm ----------
   {
-    const html = read('android', 'www', 'index.html');
-    const src = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
+    const { env } = require('./_mobilewrap');
     const ORIGIN = 'http://127.0.0.1:4321';
-    const env = (behave, ready) => {
-      const doc = {}, win = {}, execs = [], frame = { style: {}, contentWindow: { posted: [], postMessage(m, o) { this.posted.push(JSON.parse(JSON.stringify([m, o]))); } } }, chan = {}, msg = { style: {}, textContent: '' };
-      const ctx = {
-        document: { getElementById: (id) => (id === 'f' ? frame : msg), addEventListener: (t, f) => { doc[t] = f; } },
-        nodejs: { channel: { on: (t, f) => { chan[t] = f; }, post() {} }, start() {} },
-        cordova: { exec(okf, erf, plug, act, args) { execs.push({ plug, act, args: JSON.parse(JSON.stringify(args)) }); behave(okf, erf, plug, act, args); } },
-        setTimeout: () => 0, setInterval: () => 0, clearInterval() {}, console,
-        addEventListener: (t, f) => { win[t] = f; },
-      };
-      ctx.window = ctx;
-      vm.createContext(ctx); vm.runInContext(src, ctx);
-      doc.deviceready(); chan.ready(Object.assign({ port: 4321, token: 'tok' }, ready || {}));
-      const post = (data, over) => win.message(Object.assign({ origin: ORIGIN, source: frame.contentWindow, data }, over || {}));
-      const sent = () => frame.contentWindow.posted;
-      return { post, sent, execs, frame, doc };
-    };
     const lastReply = (e) => { const r = e.sent().filter((x) => x[0].archne === 'native-reply'); return r.length ? r[r.length - 1] : null; };
+    const val = (v) => () => ({ value: v });
 
     // hello + caps
-    let e = env((o) => o('ok'));
+    let e = await env(val('ok'));
     e.frame.onload();
     assert.deepStrictEqual(e.sent()[0], [{ archne: 'native-caps', audio: true, pick: false }, ORIGIN], 'iframe selesai dimuat: kabari bahwa audio tersedia (pick hanya bila inti memberi folder dxout), hanya ke origin iframe');
-    e.post({ archne: 'native', action: 'hello', id: 0 });
+    await e.post({ archne: 'native', action: 'hello', id: 0 });
     assert.strictEqual(e.sent().filter((x) => x[0].archne === 'native-caps').length, 2);
-    assert.strictEqual(e.execs.length >= 0, true);
 
     // mic: granted / denied / blocked / error
     for (const [res, wantOk] of [['granted', true], ['denied', false], ['blocked', false]]) {
-      e = env((o) => o(res));
-      e.post({ archne: 'native', action: 'mic', id: 11 });
-      const last = e.execs[e.execs.length - 1];
-      assert.deepStrictEqual([last.plug, last.act, last.args], ['ArchneAudio', 'mic', []]);
+      e = await env(val(res));
+      await e.post({ archne: 'native', action: 'mic', id: 11 });
+      const last = e.calls[e.calls.length - 1];
+      assert.deepStrictEqual([last.plug, last.act, last.args], ['ArchneAudio', 'mic', {}]);
       assert.deepStrictEqual(lastReply(e), [{ archne: 'native-reply', id: 11, ok: wantOk, res }, ORIGIN]);
     }
-    e = env((o, er) => er('boom'));
-    e.post({ archne: 'native', action: 'mic', id: 12 });
+    e = await env(() => { throw 'boom'; });
+    await e.post({ archne: 'native', action: 'mic', id: 12 });
     assert.deepStrictEqual(lastReply(e)[0], { archne: 'native-reply', id: 12, ok: false, res: 'boom' });
-    e = env(() => { throw new Error('tanpa plugin'); });
-    e.post({ archne: 'native', action: 'call-begin', id: 13 });
+    e = await env(val('ok'), {}, { noplugins: true });
+    await e.post({ archne: 'native', action: 'call-begin', id: 13 });
     assert.deepStrictEqual(lastReply(e)[0], { archne: 'native-reply', id: 13, ok: false, res: 'noplugin' }, 'plugin tidak ada: dijawab gagal, bukan menggantung');
 
     // begin / end / speaker diteruskan dengan argumen yang benar
-    e = env((o) => o('ok'));
-    e.post({ archne: 'native', action: 'call-begin', id: 1 });
-    e.post({ archne: 'native', action: 'call-end', id: 2 });
-    e.post({ archne: 'native', action: 'speaker', id: 3, on: true });
-    e.post({ archne: 'native', action: 'speaker', id: 4, on: 'ya' });
-    const calls = e.execs.filter((x) => x.plug === 'ArchneAudio').map((x) => x.act + JSON.stringify(x.args));
-    assert.deepStrictEqual(calls, ['begin[]', 'end[]', 'speaker[true]', 'speaker[false]']);
+    e = await env(val('ok'));
+    await e.post({ archne: 'native', action: 'call-begin', id: 1 });
+    await e.post({ archne: 'native', action: 'call-end', id: 2 });
+    await e.post({ archne: 'native', action: 'speaker', id: 3, on: true });
+    await e.post({ archne: 'native', action: 'speaker', id: 4, on: 'ya' });
+    assert.deepStrictEqual(e.plug('ArchneAudio').map((x) => x.act + JSON.stringify(x.args)), ['begin{}', 'end{}', 'speaker{"on":true}', 'speaker{"on":false}']);
     assert(e.sent().filter((x) => x[0].archne === 'native-reply').every((x) => x[0].ok === true));
 
     // penjagaan
-    e = env((o) => o('ok'));
-    const n0 = e.execs.length;
-    e.post({ archne: 'native', action: 'mic', id: 5 }, { origin: 'http://evil.example' });
-    e.post({ archne: 'native', action: 'mic', id: 5 }, { source: { postMessage() {} } });
-    e.post({ archne: 'native', action: 'mic', id: 'x' });
-    e.post({ archne: 'native', action: 'mic' });
-    e.post({ archne: 'native', action: 'constructor', id: 6 });
-    e.post({ archne: 'native', action: 'hasOwnProperty', id: 7 });
-    e.post({ archne: 'native', action: 'camera', id: 8 });
-    assert.strictEqual(e.execs.length, n0, 'origin/sumber salah, id bukan angka, dan aksi di luar daftar tidak menyentuh plugin');
-    e.post({ archne: 'native', action: 'battery' });
-    assert.strictEqual(e.execs[e.execs.length - 1].act, 'batteryAsk', 'aksi lama (baterai) tetap jalan');
+    e = await env(val('ok'));
+    const n0 = e.calls.length;
+    await e.post({ archne: 'native', action: 'mic', id: 5 }, { origin: 'http://evil.example' });
+    await e.post({ archne: 'native', action: 'mic', id: 5 }, { source: { postMessage() {} } });
+    await e.post({ archne: 'native', action: 'mic', id: 'x' });
+    await e.post({ archne: 'native', action: 'mic' });
+    await e.post({ archne: 'native', action: 'constructor', id: 6 });
+    await e.post({ archne: 'native', action: 'hasOwnProperty', id: 7 });
+    await e.post({ archne: 'native', action: 'camera', id: 8 });
+    assert.strictEqual(e.calls.length, n0, 'origin/sumber salah, id bukan angka, dan aksi di luar daftar tidak menyentuh plugin');
+    await e.post({ archne: 'native', action: 'battery' });
+    assert.strictEqual(e.calls[e.calls.length - 1].act, 'batteryAsk', 'aksi lama (baterai) tetap jalan');
 
     // Kirim Langsung dari HP: pemilih berpath (ArchneDownloads access / askAccess / pick)
-    const DX = '/data/user/0/com.xyraori.archne/files/archne/data/dxout', dl = (e) => e.execs.filter((x) => x.plug === 'ArchneDownloads'), lastPick = (e) => { const r = e.sent().filter((x) => x[0].archne === 'native-pick'); return r.length ? r[r.length - 1] : null; };
-    e = env((o) => o('ok'), { dxout: DX }); e.frame.onload();
+    const DX = '/data/user/0/com.xyraori.archne/files/archne/data/dxout', dl = (e) => e.plug('ArchneDownloads'), lastPick = (e) => { const r = e.sent().filter((x) => x[0].archne === 'native-pick'); return r.length ? r[r.length - 1] : null; };
+    e = await env(val('ok'), { dxout: DX }); e.frame.onload();
     assert.deepStrictEqual(e.sent()[0][0], { archne: 'native-caps', audio: true, pick: true }, 'caps: pemilih berpath tersedia setelah inti memberi folder dxout');
-    e = env((okf, er, plug, act) => { if (act === 'access') okf('ok'); else if (act === 'pick') okf(['/storage/emulated/0/DCIM/a.jpg', 7, '/storage/1234-ABCD/b.mkv']); }, { dxout: DX });
-    e.post({ archne: 'native', action: 'dxpick', id: 21, job: 'xj1' });
-    assert.deepStrictEqual(dl(e).map((x) => [x.act, x.args]), [['access', []], ['pick', [DX, 'xj1']]], 'izin ada: langsung memilih, folder dxout dari inti (bukan dari UI)');
+    e = await env((p, act) => (act === 'access' ? { value: 'ok' } : act === 'pick' ? { paths: ['/storage/emulated/0/DCIM/a.jpg', 7, '/storage/1234-ABCD/b.mkv'] } : {}), { dxout: DX });
+    await e.post({ archne: 'native', action: 'dxpick', id: 21, job: 'xj1' });
+    assert.deepStrictEqual(dl(e).map((x) => [x.act, x.args]), [['access', {}], ['pick', { root: DX, job: 'xj1' }]], 'izin ada: langsung memilih, folder dxout dari inti (bukan dari UI)');
     assert.deepStrictEqual(lastPick(e), [{ ok: true, paths: ['/storage/emulated/0/DCIM/a.jpg', '/storage/1234-ABCD/b.mkv'], archne: 'native-pick', id: 21 }, ORIGIN], 'hanya string yang diteruskan');
-    e = env((okf, er, plug, act) => { if (act === 'access') okf('no'); else okf('asked'); }, { dxout: DX });
-    e.post({ archne: 'native', action: 'dxpick', id: 22, job: 'xj2' });
+    e = await env((p, act) => (act === 'access' ? { value: 'no' } : { value: 'asked' }), { dxout: DX });
+    await e.post({ archne: 'native', action: 'dxpick', id: 22, job: 'xj2' });
     assert.deepStrictEqual(dl(e).map((x) => x.act), ['access', 'askAccess'], 'izin belum ada: buka pengaturan, belum memilih');
     assert.strictEqual(lastPick(e)[0].code, 'perm');
-    e.post({ archne: 'native', action: 'dxpick', id: 23, job: 'xj2', skip: true });
+    await e.post({ archne: 'native', action: 'dxpick', id: 23, job: 'xj2', skip: true });
     assert.strictEqual(dl(e)[dl(e).length - 1].act, 'pick', 'sudah pernah diminta (skip): lanjut memilih, berkas tak terbaca disalin cangkang');
-    e = env((okf, er, plug, act) => { if (act === 'access') okf('ok'); else er('cancel'); }, { dxout: DX });
-    e.post({ archne: 'native', action: 'dxpick', id: 24, job: 'xj3' });
+    e = await env((p, act) => { if (act === 'access') return { value: 'ok' }; throw 'cancel'; }, { dxout: DX });
+    await e.post({ archne: 'native', action: 'dxpick', id: 24, job: 'xj3' });
     assert.strictEqual(lastPick(e)[0].code, 'cancel');
-    e = env((okf, er, plug, act) => { if (act === 'access') okf('ok'); else er('e:storageFull'); }, { dxout: DX });
-    e.post({ archne: 'native', action: 'dxpick', id: 25, job: 'xj4' });
+    e = await env((p, act) => { if (act === 'access') return { value: 'ok' }; throw 'e:storageFull'; }, { dxout: DX });
+    await e.post({ archne: 'native', action: 'dxpick', id: 25, job: 'xj4' });
     assert.deepStrictEqual([lastPick(e)[0].code, lastPick(e)[0].err], ['err', 'Phone storage is full']);
-    e = env((o) => o('ok'), { dxout: DX }); const n1 = dl(e).length;
-    for (const job of ['../x', 'a/b', '', 5, 'a'.repeat(41)]) e.post({ archne: 'native', action: 'dxpick', id: 30, job });
+    e = await env(val('ok'), { dxout: DX }); const n1 = dl(e).length;
+    for (const job of ['../x', 'a/b', '', 5, 'a'.repeat(41)]) await e.post({ archne: 'native', action: 'dxpick', id: 30, job });
     assert.strictEqual(dl(e).length, n1, 'job tak sah tidak menyentuh plugin'); assert(e.sent().filter((x) => x[0].archne === 'native-pick').every((x) => x[0].code === 'err'));
-    e.post({ archne: 'native', action: 'dxpick', id: 31, job: 'ok1' }, { origin: 'http://evil.example' });
+    await e.post({ archne: 'native', action: 'dxpick', id: 31, job: 'ok1' }, { origin: 'http://evil.example' });
     assert.strictEqual(dl(e).length, n1, 'origin asing diabaikan');
-    e = env((o) => o('ok')); e.post({ archne: 'native', action: 'dxpick', id: 32, job: 'ok1' });
+    e = await env(val('ok')); await e.post({ archne: 'native', action: 'dxpick', id: 32, job: 'ok1' });
     assert.strictEqual(lastPick(e)[0].code, 'err'); assert.strictEqual(dl(e).length, 0, 'tanpa folder dxout dari inti: ditolak');
     ok('Kirim Langsung dari HP: izin dicek, pengaturan dibuka sekali lalu lanjut, batal/galat dijawab, job dan origin dijaga, folder dxout hanya dari inti');
-    ok('halaman induk: caps, mic granted/denied/blocked/error, begin/end/speaker, tanpa plugin, penjagaan origin/sumber/id/aksi');
+    ok('halaman pembungkus: caps, mic granted/denied/blocked/error, begin/end/speaker, tanpa plugin, penjagaan origin/sumber/id/aksi');
   }
 
   // ---------- 5. kontrak berkas ----------
   {
-    const html = read('android', 'www', 'index.html');
+    const html = read('mobile', 'shell', 'index.html');
     const iframe = html.match(/<iframe[^>]*>/)[0];
     const allow = (iframe.match(/allow="([^"]*)"/) || [])[1] || '';
     const feats = allow.split(';').map((x) => x.trim()).filter(Boolean).sort();
     assert.deepStrictEqual(feats, ['autoplay', 'camera', 'clipboard-write', 'microphone'], 'iframe hanya mendelegasikan mikrofon, kamera (panggilan video), autoplay, clipboard (bukan lokasi)');
     const csp = html.match(/Content-Security-Policy" content="([^"]*)"/)[1];
-    assert(/frame-src http:\/\/127\.0\.0\.1:\*(;|$)/.test(csp) && /default-src 'self' gap: data:/.test(csp), 'CSP cangkang tidak dilonggarkan');
-    assert(!/connect-src|media-src|\*\s*;/.test(csp.replace('127.0.0.1:*', '')), 'tanpa connect-src/media-src/wildcard baru');
+    assert(/frame-src http:\/\/127\.0\.0\.1:\*(;|$)/.test(csp) && /default-src 'self' data:/.test(csp), 'CSP pembungkus tidak dilonggarkan');
+    assert(!/media-src|\*\s*;/.test(csp.replace(/127\.0\.0\.1:\*/g, '')), 'tanpa media-src/wildcard baru');
     assert(/ArchneAudio/.test(html) && !/getUserMedia/.test(html), 'induk hanya meneruskan ke plugin; getUserMedia tetap di UI');
 
-    const px = read('android', 'localplugins', 'archne-audio', 'plugin.xml');
-    const java = read('android', 'localplugins', 'archne-audio', 'src', 'android', 'ArchneAudio.java');
-    assert(/<feature name="ArchneAudio"><param name="android-package" value="com\.xyraori\.archne\.ArchneAudio"/.test(px));
-    assert(/^package com\.xyraori\.archne;/m.test(java) && /public class ArchneAudio extends CordovaPlugin/.test(java));
-    assert(/source-file src="src\/android\/ArchneAudio\.java" target-dir="src\/com\/xyraori\/archne"/.test(px));
-    const perms = [...px.matchAll(/uses-permission android:name="([^"]+)"/g)].map((m) => m[1]).sort();
-    assert.deepStrictEqual(perms, ['android.permission.CAMERA', 'android.permission.MODIFY_AUDIO_SETTINGS', 'android.permission.RECORD_AUDIO'], 'mikrofon + kamera (panggilan video), tanpa izin penyimpanan');
-    assert(/uses-feature android:name="android\.hardware\.camera" android:required="false"/.test(px), 'kamera opsional: perangkat tanpa kamera tetap bisa memasang');
+    const JD = ['mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'xyraori', 'archne'];
+    const mf = read('mobile', 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+    const java = read(...JD, 'ArchneAudio.java');
+    assert(/^package com\.xyraori\.archne;/m.test(java) && /public class ArchneAudio extends Plugin/.test(java));
+    const perms = [...mf.matchAll(/uses-permission android:name="android\.permission\.(RECORD_AUDIO|CAMERA|MODIFY_AUDIO_SETTINGS)"/g)].map((m) => m[1]).sort();
+    assert.deepStrictEqual(perms, ['CAMERA', 'MODIFY_AUDIO_SETTINGS', 'RECORD_AUDIO'], 'mikrofon + kamera (panggilan video)');
+    assert(/uses-feature android:name="android\.hardware\.camera" android:required="false"/.test(mf), 'kamera opsional: perangkat tanpa kamera tetap bisa memasang');
     const shellActs = [...html.matchAll(/AUDIO_ACT = \{([^}]*)\}/g)][0][1].match(/'?[\w-]+'?\s*:\s*'(\w+)'/g).map((x) => x.match(/:\s*'(\w+)'/)[1]).filter((a) => a !== 'hello').sort();
-    const javaActs = [...java.matchAll(/"(\w+)"\.equals\(action\)/g)].map((m) => m[1]).sort();
-    assert.deepStrictEqual(shellActs, javaActs, 'nama aksi di halaman induk = nama aksi di Java');
+    const javaActs = [...java.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '').matchAll(/@PluginMethod\s+public void (\w+)\(PluginCall/g)].map((m) => m[1]).sort();
+    assert.deepStrictEqual(shellActs, javaActs, 'nama aksi di halaman pembungkus = nama @PluginMethod di Java');
     assert.deepStrictEqual(javaActs, ['begin', 'cam', 'end', 'mic', 'speaker']);
-    assert(/onRequestPermissionResult/.test(java) && /"blocked"/.test(java) && /"denied"/.test(java) && /"granted"/.test(java));
-    assert(/MODE_IN_COMMUNICATION/.test(java) && /setMode\(prevMode\)/.test(java) && /public void onReset\(\) \{ end\(\); \}/.test(java) && /public void onDestroy\(\) \{ end\(\); \}/.test(java), 'mode panggilan selalu dikembalikan (end, onReset, onDestroy)');
+    assert(/@PermissionCallback/.test(java) && /"blocked"/.test(java) && /"denied"/.test(java) && /"granted"/.test(java));
+    assert(/MODE_IN_COMMUNICATION/.test(java) && /setMode\(prevMode\)/.test(java) && /protected void handleOnDestroy\(\) \{ end\(\); \}/.test(java), 'mode panggilan selalu dikembalikan (end, handleOnDestroy)');
     assert(/Build\.VERSION\.SDK_INT >= 31/.test(java) && /setCommunicationDevice/.test(java) && /setSpeakerphoneOn/.test(java), 'rute speaker: API 31+ dan di bawahnya');
 
-    const bx = read('android', 'localplugins', 'archne-background', 'plugin.xml');
-    assert(/FOREGROUND_SERVICE_MICROPHONE/.test(bx) && /foregroundServiceType="dataSync\|microphone"/.test(bx));
-    assert(/<plugin id="archne-background" version="1\.(?:[2-9]|\d{2,})\.\d+"/.test(bx), 'versi plugin dinaikkan agar build yang sudah ada memasangnya ulang');
-    const svc = read('android', 'localplugins', 'archne-background', 'src', 'android', 'ArchneService.java');
+    assert(/FOREGROUND_SERVICE_MICROPHONE/.test(mf) && /foregroundServiceType="dataSync\|microphone"/.test(mf));
+    const svc = read(...JD, 'ArchneService.java');
     assert(/"call"\.equals\(ev\)/.test(svc) && /CATEGORY_CALL/.test(svc) && /FOREGROUND_SERVICE_TYPE_MICROPHONE/.test(svc) && /FLAG_INSISTENT/.test(svc));
-    assert(/clearCall\(/.test(read('android', 'localplugins', 'archne-background', 'src', 'android', 'ArchneBackground.java')), 'notifikasi panggilan dihapus saat aplikasi dibuka');
+    assert(/clearCall\(/.test(read(...JD, 'ArchneBackground.java')), 'notifikasi panggilan dihapus saat aplikasi dibuka');
     assert(/if \(visible\) return;\s*\n\s*ringCid = cid;/.test(svc), 'tidak ada notifikasi panggilan saat UI tampil');
 
     // Konstanta Android yang pernah salah ketik (tertangkap build sungguhan, bukan di sini): semua konstanta AudioAttributes harus dari daftar yang dikenal.
@@ -332,29 +328,34 @@ function timers() {
     assert(!/CONTENT_TYPE_SONIC\b/.test(svc));
 
     // kurung Java seimbang (tanpa JDK di sini, ini pengaman minimum terhadap salah ketik)
-    for (const [name, code] of [['ArchneAudio', java], ['ArchneService', svc], ['ArchneBackground', read('android', 'localplugins', 'archne-background', 'src', 'android', 'ArchneBackground.java')]]) {
+    for (const [name, code] of [['ArchneAudio', java], ['ArchneService', svc], ['ArchneBackground', read(...JD, 'ArchneBackground.java')]]) {
       const bare = code.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])+'/g, ''); // satu lintasan: komentar dan string dikenali menurut mana yang mulai lebih dulu (mis. "http://" bukan komentar)
       for (const [o, c] of [['{', '}'], ['(', ')'], ['[', ']']]) assert.strictEqual(bare.split(o).length, bare.split(c).length, name + ': ' + o + c + ' tidak seimbang');
     }
 
-    const bs = read('scripts', 'android-build.ps1');
-    assert(/@\('archne-audio', /.test(bs), 'build memasang plugin archne-audio');
-    assert(/'archne-downloads', 'archne-background', 'archne-audio'\) \{[\s\S]*Get-PluginHash \$srcDir\) -ne \(Get-PluginHash \$dstDir[\s\S]*plugin rm \$lp/.test(bs), 'build memasang ulang plugin lokal bila isinya berubah (hash, bukan nomor versi)');
-    const cfg = read('android', 'config.xml');
-    assert(!/CAMERA|RECORD_AUDIO/.test(cfg), 'izin ada di plugin, bukan di config.xml');
-
     const ui = require('./_src').htmlSrc();
     assert(/LC\.nativeBridge\(window\)/.test(ui) && /LC\.browserRtc\(window, nbridge\)/.test(ui) && /native: LC\.makeNative\(nbridge\)/.test(ui) && /callCtl\.speaker\(\)/.test(ui));
     assert(/<script src="archne-call\.js">/.test(ui) || /archne-call\.js/.test(ui));
-    { // langkah 5: cangkang meneruskan pause/resume, UI memasangnya ke Controller; layanan latar tetap tanpa tipe kamera
-      const _fs = require('fs'), _p = require('path');
-      const shell = _fs.readFileSync(_p.join(__dirname, '../android/www/index.html'), 'utf8'), ui = require('./_src').htmlSrc();
-      assert(/function tellApp\(state\) \{[^}]*archne: 'native-app', state: state \}, origin/.test(shell), 'cangkang mengirim native-app ke origin UI');
-      assert(/addEventListener\('pause', function \(\) \{ tellApp\('background'\); \}/.test(shell) && /addEventListener\('resume', function \(\) \{ tellApp\('foreground'\); \}/.test(shell));
-      assert(/if \(nbridge\) \{\s*nbridge\.onApp = \(hidden\) => callCtl\.appHidden\(hidden\);/.test(ui) && /visibilitychange', \(\) => callCtl\.appHidden\(document\.visibilityState === 'hidden'\)/.test(ui), 'UI: jembatan + visibilitas -> appHidden');
-      assert(!/foregroundServiceType="[^"]*camera/.test(_fs.readFileSync(_p.join(__dirname, '../android/localplugins/archne-background/plugin.xml'), 'utf8')), 'layanan latar tanpa tipe camera (berisiko crash tanpa izin; kamera channel dimatikan di latar belakang)');
+    { // Picture-in-Picture (Android): manifest, Activity, plugin, dan pembungkus saling cocok; layanan latar tetap tanpa tipe camera
+      const act = read(...JD, 'MainActivity.java'), bg = read(...JD, 'ArchneBackground.java');
+      assert(/<activity[^>]*android:supportsPictureInPicture="true"/.test(mf), 'activity mendukung PiP');
+      assert(/configChanges="[^"]*screenSize[^"]*"/.test(mf) && /smallestScreenSize/.test(mf) && /screenLayout/.test(mf), 'configChanges PiP: activity tidak dibuat ulang saat jendela mengecil');
+      assert(/onUserLeaveHint\(\)/.test(act) && /enterPictureInPictureMode\(/.test(act) && /ArchneBackground\.pipWanted/.test(act), 'Home masuk PiP hanya bila siaga');
+      assert(/onPictureInPictureModeChanged\(/.test(act) && /ArchneBackground\.pipChanged\(/.test(act), 'perubahan mode PiP diteruskan');
+      assert(/setAutoEnterEnabled\(auto\)/.test(act) && /SDK_INT >= 26/.test(act), 'API 26+ untuk PiP, auto-enter API 31+');
+      assert(/@PluginMethod\s+public void pip\(PluginCall/.test(bg) && /@PluginMethod\s+public void pipState\(PluginCall/.test(bg) && /notifyListeners\("pip"/.test(bg), 'plugin: pip, pipState, kejadian pip');
+      assert(/d\.action === 'pip'/.test(html) && /addListener\('pip'/.test(html) && /addEventListener\('archnepip'/.test(html), 'pembungkus: aksi pip, kejadian plugin, dan kejadian window');
+      assert(/triggerWindowJSEvent\("archnepip"/.test(act), 'MainActivity: jalur kedua lewat kejadian window');
+      assert(/nbridge\.onPip/.test(ui) && /archne-pip/.test(ui) && /nbridge\.pip\(/.test(ui), 'UI memasang onPip, kelas archne-pip, dan siaga');
+      assert(/body\.archne-pip #callov>\*:not\(\.cvg\)\{display:none!important\}/.test(read('renderer', 'css', 'archne-app.css')), 'CSS: kontrol disembunyikan di jendela PiP (kartu tunggal dites di callpip.js)');
     }
-    ok('kontrak: iframe allow, CSP utuh, nama aksi UI=induk=Java, izin plugin, mode panggilan dilepas, tipe layanan mikrofon, notifikasi panggilan, skrip build, kurung Java seimbang');
+    { // langkah 5: pembungkus meneruskan pause/resume, UI memasangnya ke Controller; layanan latar tetap tanpa tipe kamera
+      assert(/function tellApp\(state\) \{ tell\(\{ archne: 'native-app', state: state \}\); \}/.test(html), 'pembungkus mengirim native-app ke origin UI (lewat tell)');
+      assert(/addListener\('pause', function \(\) \{\s*paused = true;/.test(html) && /pipState'\)\.then\(function \(r\) \{ if \(!\(r && r\.on === true\)\) tellApp\('background'\)/.test(html) && /tellApp\('foreground'\)/.test(html), 'pause: background hanya bila PiP tidak aktif');
+      assert(/if \(nbridge\) \{\s*nbridge\.onApp = \(hidden\) => callCtl\.appHidden\(hidden\);/.test(ui) && /visibilitychange', \(\) => \{ if \(pipShown\) return; callCtl\.appHidden\(document\.visibilityState === 'hidden'\);/.test(ui), 'UI: jembatan + visibilitas -> appHidden');
+      assert(!/foregroundServiceType="[^"]*camera/.test(mf), 'layanan latar tanpa tipe camera (berisiko crash tanpa izin; kamera channel dimatikan di latar belakang)');
+    }
+    ok('kontrak: iframe allow, CSP utuh, nama aksi UI=pembungkus=Java, izin, mode panggilan dilepas, tipe layanan mikrofon, notifikasi panggilan, kurung Java seimbang');
   }
 
   console.log('\n' + pass + ' tes panggilan Android OK');

@@ -37,7 +37,7 @@ const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
   register({ ipcMain: { handle: (n, fn) => { handlers[n] = fn; } }, core: { opts: { dataDir: dir }, on() {}, off() {} }, shell: {}, send: () => {}, log: () => {}, pickFiles: async () => [] });
   const save = (...a) => handlers.captureSave({}, ...a);
   let r = await save('IMG_1.jpg', jpg); assert(r.ok && r.path.startsWith(path.join(dir, 'capture')) && /cap-[0-9a-f]{16}\.jpg$/.test(r.path) && fs.readFileSync(r.path).equals(jpg), JSON.stringify(r));
-  assert.strictEqual(fs.statSync(r.path).mode & 0o077, 0, 'izin hanya pemilik');
+  if (process.platform !== 'win32') assert.strictEqual(fs.statSync(r.path).mode & 0o077, 0, 'izin hanya pemilik'); // Windows tidak punya bit izin POSIX (selalu 0o666)
   r = await save('VID.mp4', new Uint8Array(mp4)); assert(r.ok && /\.mp4$/.test(r.path), 'Uint8Array dari renderer');
   r = await save('v.webm', mp4.buffer.slice(mp4.byteOffset, mp4.byteOffset + 12)); assert(!r.ok, 'ArrayBuffer MP4 diberi nama .webm: isi tidak cocok');
   for (const [n, b, why] of [['x.exe', jpg, 'ekstensi'], ['x.jpg', mp4, 'isi tidak cocok'], ['x.jpg', Buffer.alloc(3), 'terlalu kecil'], ['x.jpg', 'teks', 'bukan byte'], ['../../x.jpg', 'teks', 'traversal'], [null, jpg, 'tanpa nama'], ['x.mp4', Buffer.concat([mp4, Buffer.alloc(64 * 1048576)]), 'terlalu besar']]) { r = await save(n, b); assert(!r.ok && r.err, why); }
@@ -108,7 +108,7 @@ const rd = (f) => fs.readFileSync(path.join(root, f), 'utf8');
   assert(html.indexOf('archne-media.js') < html.indexOf('archne-camera.js') && html.indexOf('js/archne-player.js') < html.indexOf('js/archne-camera.js') && html.indexOf('js/archne-camera.js') < html.indexOf('js/archne-settings.js') && html.indexOf('js/archne-voice-public.js') < html.indexOf('js/archne-camera.js'), 'urutan skrip');
   assert(/captureSave: \(name, bytes\) => ipcRenderer\.invoke\('captureSave', name, bytes\)/.test(rd('preload.js')) && /api\.captureSave = undefined/.test(rd('renderer/archne-api-http.js')), 'HTTP/Android: tanpa captureSave, hasil kamera dikirim sebagai File');
   assert(/cameraOpen\(\)/.test(rd('renderer/js/archne-render.js')) && /id="cmv" muted playsinline/.test(html), 'Kembali menutup kamera; pratinjau dibisukan (tanpa gema)');
-  assert(/android\.permission\.CAMERA/.test(rd('android/localplugins/archne-audio/plugin.xml')) && /RECORD_AUDIO/.test(rd('android/localplugins/archne-audio/plugin.xml')) && /allow="clipboard-write; microphone; camera/.test(rd('android/www/index.html')), 'Android: izin dan iframe sudah mengizinkan kamera/mikrofon');
+  assert(/android\.permission\.CAMERA/.test(rd('mobile/android/app/src/main/AndroidManifest.xml')) && /RECORD_AUDIO/.test(rd('mobile/android/app/src/main/AndroidManifest.xml')) && /allow="clipboard-write; microphone; camera/.test(rd('mobile/shell/index.html')), 'Android: izin dan iframe sudah mengizinkan kamera/mikrofon');
   ok('kontrak: markup, urutan skrip, captureSave hanya di preload, Kembali, izin Android sudah ada');
 
   console.log('\nOK: ' + pass + ' kelompok');

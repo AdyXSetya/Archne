@@ -11,15 +11,15 @@ Ngobrol, telepon, dan berbagi berkas langsung antar perangkat.
 Identitasmu cuma sepasang kunci di perangkatmu sendiri.
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Versi](https://img.shields.io/badge/versi-0.30.0-blue)
+![Versi](https://img.shields.io/badge/versi-0.31.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Android%20%C2%B7%20Browser-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Node](https://img.shields.io/badge/node-LTS-339933)
+![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933)
 ![Bahasa](https://img.shields.io/badge/bahasa-English%20%C2%B7%20Indonesia-informational)
 
 [English](README.md) · **Bahasa Indonesia**
 
-[Fitur](#-fitur) · [Instalasi](#-instalasi) · [Build](#-build) · [Cara kerja](#-cara-kerja) · [Pengembangan](#-pengembangan)
+[Fitur](#-fitur) · [Instalasi](#-instalasi) · [Build](#-build) · [Cara kerja](#-cara-kerja) · [Pengembangan](#-pengembangan) · [Changelog](CHANGELOG.id.md)
 
 </div>
 
@@ -35,6 +35,14 @@ Kebanyakan aplikasi chat bergantung pada server milik perusahaan: akunmu ada di 
 Archne dibuat dengan arah sebaliknya. Setiap perangkat adalah **peer** yang setara. Perangkat saling menemukan di jaringan yang sama (Wi-Fi atau LAN), lalu bertukar pesan, panggilan, dan berkas **langsung**. Tidak ada server pusat yang harus dipercaya, dibayar, atau bisa hilang. Untuk teman di jaringan lain, tersedia **mode lintas jaringan** dengan kode jaringan pribadi.
 
 > **Status: beta.** Fitur utama sudah berjalan dan dipakai sehari-hari, tetapi masih ada bagian yang bisa berubah. Menemukan bug? Silakan buka *issue*.
+
+### 🆕 Baru di 0.31.0
+- **Android dibangun ulang dengan Capacitor 8** dan runtime **Node 24**. Cordova sudah tidak dipakai.
+- **Dukungan page size 16 KB** untuk perangkat Android yang lebih baru (diperiksa dengan `zipalign`).
+- **Desktop pindah ke Electron 45** (electron-builder 26).
+- Android: notifikasi panggilan lebih baik (Jawab / Tolak, tampil di layar kunci), tampilan edge-to-edge, penanganan tombol Kembali, serta ekspor/impor Halaman.
+
+> **Memperbarui dari 0.30.0?** Ini perubahan internal yang besar. Data aplikasi lama **tidak** dibawa. Android hanya mau memasang APK baru di atas yang lama bila keduanya ditandatangani kunci yang sama; kalau tidak, uninstall dulu. Rincian lengkap ada di [changelog](CHANGELOG.id.md).
 
 ---
 
@@ -86,7 +94,9 @@ Halaman adalah ruang postinganmu sendiri, mirip profil sosial media tetapi tersi
 
 ### Kebutuhan
 - **Windows 10 / 11** untuk aplikasi desktop. Skrip `.bat` memasang Node.js LTS lewat `winget` bila belum ada.
-- **Node.js LTS** (untuk menjalankan dari sumber, mode peramban, dan build).
+- **Node.js 22.12 atau lebih baru** (disarankan LTS) untuk menjalankan dari sumber, mode peramban, dan build.
+- **Android 7.0 (API 24) atau lebih baru** untuk menjalankan aplikasi Android.
+- **Untuk membangun APK:** JDK 21 dan Android SDK (platform 36, CMake). `mobile.bat` memasang keduanya bila belum ada, jadi Android Studio opsional.
 - **Git** (opsional, untuk meng-clone repo).
 
 ### Cara termudah (Windows)
@@ -149,22 +159,27 @@ build.bat            # atau: npm run dist
 
 Menghasilkan installer **NSIS** dan versi **portable** `.exe`. Build pertama mengunduh komponen Electron, jadi butuh waktu.
 
+> Sejak Electron 42, `npm install` tidak lagi mengunduh binary Electron. `setup.bat` mengunduhnya untukmu, atau otomatis saat `npm start` pertama.
+
 ### Android (APK)
 
-Butuh **JDK 17** dan **Android SDK**. Siapkan sekali:
+Satu perintah mengerjakan semuanya. Saat pertama kali dijalankan, **JDK 21** dan **Android SDK** (platform 36, CMake) dipasang otomatis bila belum ada:
 
 ```bash
-setup-android.bat
+mobile.bat                    # APK debug (semua ABI)
+mobile.bat -Install           # ...lalu pasang ke HP yang terhubung lewat adb
+mobile.bat -Release           # APK rilis bertanda tangan
+mobile.bat -Release -Aab      # ...plus AAB untuk Google Play
+mobile.bat -Abis arm64-v8a    # satu ABI saja (APK lebih kecil)
 ```
 
-Lalu bangun APK:
+Aplikasi Android adalah cangkang **Capacitor 8** murni dengan runtime **Node 24** dari `@capawesome/capacitor-nodejs`, jadi inti Archne yang sama berjalan langsung di HP. Tidak ada Cordova. Runtime Node (`libnode.so`) sekitar 120 MB per arsitektur CPU, karena itu APK universal memuat semua arsitektur yang didukung (`arm64-v8a`, `armeabi-v7a`, `x86_64`). AAB Play hanya mengirim yang cocok per perangkat.
 
-```bash
-build-android.bat             # APK debug
-build-android-release.bat     # APK release
-```
+#### Tanda tangan rilis (wajib dicadangkan)
 
-Aplikasi Android memakai Cordova dan `nodejs-mobile`, jadi inti Archne yang sama berjalan langsung di HP.
+`-Release` menandatangani APK dengan `%USERPROFILE%\.archne\archne-release.jks` (alias `archne`, password di `release.pass` di sebelahnya). Bila kunci belum ada, kunci dibuat saat build rilis pertama.
+
+**Salin folder itu ke tempat pribadi**, misalnya flashdisk. Jangan di-commit ke Git atau dibagikan lewat chat (`.gitignore` sudah memblokir `*.jks`). Android hanya mengizinkan APK baru menimpa aplikasi terpasang bila keduanya ditandatangani kunci yang sama. Bila kunci hilang, semua pengguna harus uninstall dulu dan kehilangan data lokalnya.
 
 ### Windows dan Android sekaligus
 
@@ -182,9 +197,7 @@ build-all.bat
 | `serve.bat` | Jalankan mode peramban |
 | `firewall.bat` | Buka aturan firewall Archne (admin) |
 | `build.bat` | Bangun installer Windows |
-| `setup-android.bat` | Siapkan JDK dan Android SDK |
-| `build-android.bat` | Bangun APK debug |
-| `build-android-release.bat` | Bangun APK release |
+| `mobile.bat` | Bangun APK Android (`-Install`, `-Release`, `-Aab`, `-Abis`) |
 | `build-all.bat` | Bangun Windows dan Android |
 
 Log skrip tersimpan di folder `logs/`.
@@ -216,6 +229,8 @@ Log skrip tersimpan di folder `logs/`.
 | Teman beda jaringan | Pakai mode lintas jaringan: bagikan kode jaringan atau tautan undangan `archne://join?...`. |
 | Panggilan gagal antar jaringan | Atur penyedia TURN (Cloudflare, Metered, atau manual) di Pengaturan. |
 | Ada yang aneh | Jalankan `debug.bat`, cek folder `logs/`, lalu buka *issue* beserta detailnya. |
+| Aplikasi Android bermasalah | Sambungkan HP dan jalankan `adb logcat -s NodejsPlugin chromium Capacitor` untuk melihat log Node dan WebView. |
+| APK baru tidak bisa menimpa yang lama | Kunci tanda tangannya berbeda. Uninstall aplikasi lama dulu (data lokal hilang). |
 
 ---
 
@@ -243,8 +258,10 @@ archne/
 │   ├── css/                Gaya
 │   ├── i18n/               Kamus bahasa (en, id)
 │   └── vendor/             Pustaka pihak ketiga (MQTT, RNNoise)
-├── android/                Cangkang Android (Cordova + nodejs-mobile)
+├── mobile/                 Cangkang Android (Capacitor 8 + Node 24)
 ├── scripts/                Skrip setup dan build
+├── docs/                   Catatan perencanaan dan baseline tes
+├── CHANGELOG.id.md         Riwayat rilis
 └── test/                   Suite tes
 ```
 
@@ -252,9 +269,20 @@ archne/
 
 ### Menambah bahasa atau teks
 
-Kunci teks baru harus ditambahkan di `renderer/i18n/archne-en.js` dan `archne-id.js` sekaligus. Latar belakang dan konvensinya ada di `PLAN-i18n.md`.
+Kunci teks baru harus ditambahkan di `renderer/i18n/archne-en.js` dan `archne-id.js` sekaligus. Latar belakang dan konvensinya ada di [`docs/PLAN-i18n.md`](docs/PLAN-i18n.md).
 
 ---
+
+## Cadangan dan pemulihan halaman
+
+Seluruh Halamanmu bisa dicadangkan ke satu berkas `.archpg` dan dipulihkan di perangkat lain. Batas berikut sama dengan kode (dijaga oleh `test/pagearcdoc.js`):
+
+- Satu berkas (gambar, lampiran, atau video) maksimal **2 GiB**.
+- Per postingan: maksimal 10 / 10 / 4 (gambar / lampiran / video).
+- Satu arsip memuat maksimal **100.000** postingan dan **200.000** entri.
+- Manifest arsip maksimal 32 MiB; JSON satu postingan maksimal 8 MiB.
+- Komentar per arsip: maksimal 10.000 komentar + 10.000 nisan (penanda komentar terhapus); satu entri komentar maksimal 64 MiB.
+- Format berkas: penanda awal `ARCHPGA1` ... `ARCHPGZ1` di akhir, dengan meta `fmt: 1`.
 
 ## 🤝 Kontribusi
 

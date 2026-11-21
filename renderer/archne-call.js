@@ -178,6 +178,9 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     elapsed() { return this.cur && this.cur.since ? (this.now() - this.cur.since) / 1000 : 0; }
     // Aliran video untuk UI (bukan bagian view() karena bukan data murni). Null bila tidak ada.
     localVideo() { const c = this.cur; return c && c.video && c.stream && c.stream.getVideoTracks && c.stream.getVideoTracks().length ? c.stream : null; }
+    // Aliran suara untuk pengukur level (jendela PiP memilih kartu pembicara). Null bila tidak ada; mikrofon sendiri hanya bila tidak dibisukan.
+    localAudio() { const c = this.cur; return c && c.stream && !c.muted && c.stream.getAudioTracks && c.stream.getAudioTracks().length ? c.stream : null; }
+    remoteAudio(peer) { const c = this.cur, l = c && c.legs.find((x) => x.peer === peer); return l && l.remote && l.remote.getAudioTracks && l.remote.getAudioTracks().length ? l.remote : null; }
     // Jalur video kosong (lawan belum menyalakan kamera) tidak ditampilkan: kartunya tetap avatar, bukan bingkai hitam.
     remoteVideo(peer) {
       const c = this.cur, l = c && c.legs.find((x) => x.peer === peer);
@@ -1109,9 +1112,67 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     };
   }
 
+  // ---- Picture-in-Picture: satu kartu saja ----
+  // Kartu yang tampil di jendela kecil. cands = kunci kartu yang videonya hidup ('me' = kameraku, selain itu id peserta).
+  // Aturan: orang lain didahulukan; 1-1 berarti lawan bicara, dan bila kameranya mati, kameraku. Bila ada beberapa orang berkamera (grup / channel),
+  // yang paling keras bicara. Agar tidak melompat-lompat: kartu lama dipertahankan sampai yang lain jelas lebih keras (1,5x) dan sudah PIP_DWELL_MS.
+  // levels = { kunci: 0..1 }; st = { key, at } hasil panggilan sebelumnya. Mengembalikan { key, at } baru.
+  const PIP_SPEAK = 0.02, PIP_DWELL_MS = 1500;
+  function pickPip(cands, levels, st, now) {
+    const all = Array.isArray(cands) ? cands : [];
+    const rem = all.filter((k) => k !== 'me');
+    const pool = rem.length ? rem : all.filter((k) => k === 'me');
+    if (!pool.length) return { key: null, at: now };
+    const prev = st && pool.includes(st.key) ? st : null;
+    if (pool.length === 1) return { key: pool[0], at: prev ? prev.at : now };
+    const lv = (k) => (levels && Number(levels[k])) || 0;
+    let best = pool[0];
+    for (const k of pool) if (lv(k) > lv(best)) best = k;
+    if (!prev) return { key: best, at: now };
+    if (best !== prev.key && lv(best) >= PIP_SPEAK && lv(best) > lv(prev.key) * 1.5 && now - prev.at >= PIP_DWELL_MS) return { key: best, at: now };
+    return prev;
+  }
+  // Pengukur level suara per peserta (WebAudio AnalyserNode; tidak tersambung ke speaker, jadi tidak menambah suara). sync(map) menerima { kunci: MediaStream }
+  // dan memasang / melepas pengamat; levels() mengembalikan { kunci: 0..1 } dengan penurunan halus supaya tidak berkedip. Null bila WebAudio tidak ada.
+  function levelMeter(AC) {
+    if (!AC) return null;
+    let ctx = null;
+    const nodes = new Map(); // kunci -> { stream, src, an, buf, lvl }
+    const drop = (k) => { const n = nodes.get(k); if (!n) return; try { n.src.disconnect(); } catch {} nodes.delete(k); };
+    return {
+      sync(map) {
+        try { ctx = ctx || new AC(); if (ctx.state === 'suspended' && ctx.resume) ctx.resume(); } catch { return; }
+        for (const k of [...nodes.keys()]) if (!map || map[k] !== nodes.get(k).stream) drop(k);
+        for (const k of Object.keys(map || {})) {
+          if (nodes.has(k) || !map[k]) continue;
+          try {
+            const src = ctx.createMediaStreamSource(map[k]), an = ctx.createAnalyser();
+            an.fftSize = 512; src.connect(an);
+            nodes.set(k, { stream: map[k], src, an, buf: new Uint8Array(an.fftSize), lvl: 0 });
+          } catch {}
+        }
+      },
+      levels() {
+        const out = {};
+        for (const [k, n] of nodes) {
+          try {
+            n.an.getByteTimeDomainData(n.buf);
+            let s = 0; for (let i = 0; i < n.buf.length; i++) { const x = (n.buf[i] - 128) / 128; s += x * x; }
+            n.lvl = Math.max(Math.sqrt(s / n.buf.length), n.lvl * 0.7);
+          } catch { n.lvl = 0; }
+          out[k] = n.lvl;
+        }
+        return out;
+      },
+      stop() { for (const k of [...nodes.keys()]) drop(k); try { if (ctx && ctx.close) ctx.close(); } catch {} ctx = null; },
+    };
+  }
+
   // Jembatan ke cangkang Android lewat postMessage (halaman induk meneruskan ke plugin ArchneAudio). Null bila tidak tertanam di iframe.
-  // Protokol: UI -> induk { archne:'native', action:'hello'|'mic'|'cam'|'call-begin'|'call-end'|'speaker', id, on }
-  //           induk -> UI { archne:'native-caps', audio } dan { archne:'native-reply', id, ok, res }
+  // Protokol: UI -> induk { archne:'native', action:'hello'|'mic'|'cam'|'call-begin'|'call-end'|'speaker'|'pip', id, on }
+  //           induk -> UI { archne:'native-caps', audio }, { archne:'native-reply', id, ok, res }, { archne:'native-app', state:'background'|'foreground' }
+  //           dan { archne:'native-app', state:'back', id } (tombol Kembali; UI menjawab { archne:'native', action:'back-result', id, on })
+  //           dan { archne:'native-app', state:'pip', on } (jendela Picture-in-Picture tampil / ditutup)
   function nativeBridge(w, timers) {
     try { if (!w || !w.parent || w.parent === w || typeof w.addEventListener !== 'function') return null; } catch { return null; }
     const T = timers || { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: (t) => clearTimeout(t) };
@@ -1120,6 +1181,17 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     const b = {
       audio: false,
       onApp: null, // (hidden: boolean) => void; diisi UI: aplikasi ke latar belakang (true) atau kembali (false)
+      onBack: null, // () => boolean; diisi UI: tombol Kembali perangkat. true = UI sudah menanganinya (tutup dialog, kecilkan panggilan), false = cangkang yang mundur / menyembunyikan aplikasi
+      onPip: null, // (on: boolean) => void; diisi UI: jendela Picture-in-Picture tampil (true) atau ditutup (false)
+      pipOn: false,
+      pipWant: false,
+      // Panggilan video aktif = siaga PiP. Hanya dikirim bila berubah.
+      pip(on) {
+        on = on === true;
+        if (on === b.pipWant) return;
+        b.pipWant = on;
+        try { w.parent.postMessage({ archne: 'native', action: 'pip', id: 0, on }, '*'); } catch {}
+      },
       ask(action, on, ms) {
         return new Promise((resolve) => {
           const id = ++seq;
@@ -1134,6 +1206,11 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       const d = e && e.data;
       if (!e || e.source !== w.parent || !d || typeof d !== 'object') return;
       if (d.archne === 'native-caps') b.audio = d.audio === true;
+      else if (d.archne === 'native-app' && d.state === 'back') { // tombol Kembali: cangkang menunggu jawaban (maks. sebentar), jadi selalu dijawab
+        let on = false; try { on = typeof b.onBack === 'function' && b.onBack() === true; } catch { on = false; }
+        try { w.parent.postMessage({ archne: 'native', action: 'back-result', id: d.id, on }, '*'); } catch {}
+      }
+      else if (d.archne === 'native-app' && d.state === 'pip') { b.pipOn = d.on === true; try { if (typeof b.onPip === 'function') b.onPip(b.pipOn); } catch {} }
       else if (d.archne === 'native-app' && (d.state === 'background' || d.state === 'foreground')) { try { if (typeof b.onApp === 'function') b.onApp(d.state === 'background'); } catch {} }
       else if (d.archne === 'native-reply' && waiting.has(d.id)) {
         const f = waiting.get(d.id); waiting.delete(d.id);
@@ -1343,19 +1420,20 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       const ck = chanCams(v);
       if (ck.length) {
         const fk = h.focus && ck.includes(h.focus) ? h.focus : '';
-        const ctile = (key, name, who, me, badge) => `<div class="cvt${me ? ' me' : ''}${fk === key ? ' big' : ''}" data-vkey="${h.esc(key)}" data-cact="focus" data-vfocus="${h.esc(key)}" role="button" tabindex="0" aria-label="${ct('cl.vid.zoom', 'Perbesar video {name}', { name: h.esc(name) })}"><span class="cva">${h.avatar(who)}</span><span class="cvn">${h.esc(name)}${badge || ''}</span>${fk === key ? `<button type="button" class="cvx" data-cact="unfocus" aria-label="${ct('cl.vid.grid', 'Kembali ke grid')}" title="${ct('cl.vid.grid', 'Kembali ke grid')}">${(h.icons && h.icons.shrink) || '⤡'}</button>` : ''}</div>`;
+        const ctile = (key, name, who, me, badge) => `<div class="cvt${me ? ' me' : ''}${fk === key ? ' big' : ''}" data-vkey="${h.esc(key)}" data-cact="focus" data-vfocus="${h.esc(key)}" role="button" tabindex="0" aria-label="${ct('cl.vid.zoom', 'Perbesar video {name}', { name: h.esc(name) })}"><span class="cvp">${h.avatar(who)}</span><span class="cva">${h.avatar(who)}</span><span class="cvn">${h.esc(name)}${badge || ''}</span>${fk === key ? `<button type="button" class="cvx" data-cact="unfocus" aria-label="${ct('cl.vid.grid', 'Kembali ke grid')}" title="${ct('cl.vid.grid', 'Kembali ke grid')}">${(h.icons && h.icons.shrink) || '⤡'}</button>` : ''}</div>`;
         const tiles = legs.filter((x) => x.cam === true && x.state === 'active').map((x) => ctile(x.peer, x.name || '?', x.peer, false, stateBadge(x, h))).join('')
           + (ck.includes('me') ? ctile('me', ct('chat.you', 'Kamu'), h.meId || '', true, '') : '');
-        return `<div class="cvh"><span class="cnm">${h.esc(v.vc.name || 'Channel')}</span><span class="cst" id="calltime" data-phase="${v.phase}">${status}</span></div>`
+        // Daftar peserta di bawah kartu dihapus (tidak penting): siapa yang ada cukup dari kartu + jumlah orang di header; foto profil ada di pojok kiri atas tiap kartu.
+        return `<div class="cvh"><span class="cnm">${h.esc(v.vc.name || 'Channel')}</span><span class="cst" id="calltime" data-phase="${v.phase}">${status}</span><span class="cst cvk">${tnc('cl.vc.people', others + 1, 'Channel suara · {count} orang')}</span></div>`
           + `<div class="cvg chv${fk ? ' focus' : ''}" data-n="${ck.length}" role="group" aria-label="${ct('cl.vid.aria', 'Video')}">${tiles}</div>`
-          + `<ul class="cpl cvl" aria-label="${ct('cl.people', 'Peserta')}">${rows}</ul><div class="cbtns">${tog}${main}</div>${ns}`;
+          + `<div class="cbtns">${tog}${main}</div>${ns}`;
       }
       return `<div class="cnm">${h.esc(v.vc.name || 'Channel')}</div><div class="cst" id="calltime" data-phase="${v.phase}">${status}</div><div class="cin">${others ? tnc('cl.vc.people', others + 1, 'Channel suara · {count} orang') : ct('cl.vc.waiting', 'Channel suara · menunggu orang lain masuk')}</div><ul class="cpl" aria-label="${ct('cl.people', 'Peserta')}">${rows}</ul><div class="cbtns">${tog}${main}</div>${ns}`;
     }
     if (v.invite) {
       const others = mem.filter((x) => x.id !== v.peer).map((x) => h.esc(x.name)).join(', '); // members memuat si pengundang; dia sudah jadi judul
       const info = `<div class="cin">${others ? ct('cl.inv.with', 'Di panggilan: {names}', { names: others }) : ct('cl.inv.none', 'Belum ada peserta lain')}</div>`;
-      return `<div class="cav">${h.avatar(v.peer)}</div><div class="cnm">${h.esc(v.name || '?')}</div><div class="cst" id="calltime" data-phase="${v.phase}">${ct('cl.inv.you', 'mengundangmu ke panggilan grup')}</div>${info}<div class="cbtns">${tog}${main}</div>`;
+      return `<div class="cav" data-peer="${h.esc(v.peer || '')}">${h.avatar(v.peer)}</div><div class="cnm">${h.esc(v.name || '?')}</div><div class="cst" id="calltime" data-phase="${v.phase}">${ct('cl.inv.you', 'mengundangmu ke panggilan grup')}</div>${info}<div class="cbtns">${tog}${main}</div>`;
     }
     if (group) {
       const LS = { active: ct('wan.connected', 'Tersambung'), connecting: ct('wan.stConnecting', 'Menyambung…'), dialing: ct('wan.stConnecting', 'Menyambung…'), ringing: ct('wan.stConnecting', 'Menyambung…') };
@@ -1366,8 +1444,8 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     }
     const one = legs.find((x) => x.peer === v.peer) || legs[0]; // 1-1: lawan bicara satu-satunya
     const ob = stateBadge(one, h);
-    return `<div class="cav">${h.avatar(v.peer)}</div><div class="cnm">${h.esc(v.name || '?')}</div><div class="cst" id="calltime" data-phase="${v.phase}">${status}</div>${ob ? `<div class="cob">${ob}<span>${one.deafened ? ct('cl.deafShort', 'Tidak mendengar') : ct('cl.micOff', 'Mik dimatikan')}</span></div>` : ''}<div class="cbtns">${tog}${main}</div>${ns}${pk}`;
+    return `<div class="cav" data-peer="${h.esc(v.peer || '')}">${h.avatar(v.peer)}</div><div class="cnm">${h.esc(v.name || '?')}</div><div class="cst" id="calltime" data-phase="${v.phase}">${status}</div>${ob ? `<div class="cob">${ob}<span>${one.deafened ? ct('cl.deafShort', 'Tidak mendengar') : ct('cl.micOff', 'Mik dimatikan')}</span></div>` : ''}<div class="cbtns">${tog}${main}</div>${ns}${pk}`;
   }
 
-  return { Controller, NoiseGate, NOISE_MODES, NOISE_DEFAULT, audioConstraints, videoConstraints, sdpHasVideo, sdpVideoKind, fmtDur, durHuman, callLabel, callMembers, endText, supported, browserRtc, nativeBridge, makeNative, makeRinger, overlayHtml, canMinimize, videoView, inviteCandidates, inviteFailText, legText, roomCount, CALL_MAX_PEERS, DISCONNECT_GRACE_MS, SYNC_GUARD_MS };
+  return { Controller, NoiseGate, NOISE_MODES, NOISE_DEFAULT, audioConstraints, videoConstraints, sdpHasVideo, sdpVideoKind, fmtDur, durHuman, callLabel, callMembers, endText, supported, browserRtc, nativeBridge, makeNative, makeRinger, pickPip, levelMeter, PIP_DWELL_MS, overlayHtml, canMinimize, videoView, inviteCandidates, inviteFailText, legText, roomCount, CALL_MAX_PEERS, DISCONNECT_GRACE_MS, SYNC_GUARD_MS };
 });

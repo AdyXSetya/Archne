@@ -19,7 +19,7 @@ const dialTcp = (peer) => net.connect({ host: peer.ip, port: peer.port });
 const crypto = require('crypto');
 const fs = require('fs');
 const { Transform } = require('stream');
-const { pipeline } = require('./archne-compat');
+const { pipeline } = require('stream/promises');
 
 const HEAD_MAX = 4096, IDLE_MS = 15000, CHUNK = 64 * 1024;
 const SEG = 64 * 1024, TAG = 16, ADOMAIN = Buffer.from('archne-file-v1');

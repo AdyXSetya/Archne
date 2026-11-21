@@ -140,10 +140,11 @@ ok('api: placeholder, jamak, fallback id->en->kunci, bahasa tak dikenal -> en');
   ok('_src.js: inlineJs()/pagesJs() bawaan = kamus asli + bahasa id; off dan en tersedia');
 }
 
-// ---- 9 (F-Android). Teks native Android: strings.xml en/id, ArchneLang, kamus halaman pembungkus ----
-{
-  const bgDir = path.join(root, 'android', 'localplugins', 'archne-background');
-  const xml = (f) => { const t = fs.readFileSync(path.join(bgDir, 'src', 'android', 'res', f, 'archne_strings.xml'), 'utf8'), o = {}; for (const m of t.matchAll(/<string name="([^"]+)">([^<]*)<\/string>/g)) o[m[1]] = m[2]; return o; };
+// ---- 9 (F-Android). Teks native Android: strings.xml en/id, ArchneLang, kamus halaman pembungkus Capacitor ----
+(async () => {
+  const ma = ['mobile', 'android', 'app', 'src', 'main'];
+  const resDir = path.join(root, ...ma, 'res'), javaDir = path.join(root, ...ma, 'java', 'com', 'xyraori', 'archne');
+  const xml = (f) => { const t = fs.readFileSync(path.join(resDir, f, 'archne_strings.xml'), 'utf8'), o = {}; for (const m of t.matchAll(/<string name="([^"]+)">([^<]*)<\/string>/g)) o[m[1]] = m[2]; return o; };
   const xe = xml('values'), xi = xml('values-in');
   assert.deepStrictEqual(Object.keys(xe).sort(), Object.keys(xi).sort(), 'strings.xml: nama en == id');
   const ph = (t) => (t.match(/%\d\$[sd]/g) || []).sort().join();
@@ -156,7 +157,6 @@ ok('api: placeholder, jamak, fallback id->en->kunci, bahasa tak dikenal -> en');
   const ID_WORDS = /\b(Gagal|gagal|Memulai|Tidak|tidak|Tutup|Pilih|Sudah|Inti|inti|belum|Panggilan|Pesan|Tolak|Jawab|Balas|Kamu|Publik|Layanan|Menjaga|Mikrofon|Tandai|aplikasi|berlangsung|terjawab|masuk)\b/;
   for (const k of Object.keys(xe)) assert(!ID_WORDS.test(xe[k]), 'sisi English strings.xml memuat kata Indonesia: ' + k + ' = ' + xe[k]);
   // pemakaian: setiap kunci di ArchneLang.s(ctx, "kunci") ada di xml, dan setiap string xml dipakai (tanpa yatim)
-  const javaDir = path.join(bgDir, 'src', 'android');
   const javas = fs.readdirSync(javaDir).filter((f) => f.endsWith('.java') && f !== 'ArchneLang.java');
   const used = new Set();
   const strip = (j) => j.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:"])\/\/.*$/gm, '$1');
@@ -168,13 +168,11 @@ ok('api: placeholder, jamak, fallback id->en->kunci, bahasa tak dikenal -> en');
   }
   for (const k of used) assert(xe['archne_' + k] !== undefined, 'kunci ArchneLang tanpa string: ' + k);
   for (const k of Object.keys(xe)) assert(used.has(k.replace(/^archne_/, '')), 'string xml yatim (tak dipakai Java): ' + k);
-  // plugin.xml mendaftarkan semuanya (dan berkasnya ada)
-  const px = fs.readFileSync(path.join(bgDir, 'plugin.xml'), 'utf8');
-  for (const f of ['src/android/ArchneLang.java', 'src/android/res/values/archne_strings.xml', 'src/android/res/values-in/archne_strings.xml']) assert(px.includes('src="' + f + '"') && fs.existsSync(path.join(bgDir, f)), 'plugin.xml mendaftarkan ' + f);
-  ok('strings.xml en/id: nama dan placeholder sama, semua kunci Java ada, tanpa yatim, tanpa teks Indonesia polos di Java, terdaftar di plugin.xml');
+  assert(fs.existsSync(path.join(javaDir, 'ArchneLang.java')), 'ArchneLang.java ada');
+  ok('strings.xml en/id: nama dan placeholder sama, semua kunci Java ada, tanpa yatim, tanpa teks Indonesia polos di Java');
 
-  // halaman pembungkus (android/www/index.html): kamus W en == id, tanpa teks Indonesia di luar kamus, perilaku bahasa
-  const html = rd('android', 'www', 'index.html');
+  // halaman pembungkus (mobile/shell/index.html): kamus W en == id, tanpa teks Indonesia di luar kamus, perilaku bahasa
+  const html = rd('mobile', 'shell', 'index.html');
   const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].pop()[1];
   const wsrc = script.match(/var W = (\{[\s\S]*?\n  \});/)[1];
   const W = vm.runInNewContext('(' + wsrc + ')');
@@ -185,71 +183,59 @@ ok('api: placeholder, jamak, fallback id->en->kunci, bahasa tak dikenal -> en');
   const rest = script.replace(wsrc, '').replace(/\/\/.*$/gm, '');
   assert(!/\b(Gagal|Memulai|Tidak|tidak|Tutup|Pilih|Sudah|Inti|belum)\b/.test([...rest.matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]).join('\n')), 'pembungkus: tidak ada teks Indonesia di luar kamus W');
   // plugin unduhan: galat ke pengguna berupa kode "e:<nama>"; tiap kode punya terjemahan e_<nama> di W (en + id) dan sebaliknya
-  const dlJ = strip(fs.readFileSync(path.join(root, 'android', 'localplugins', 'archne-downloads', 'src', 'android', 'ArchneDownloads.java'), 'utf8'));
+  const dlJ = strip(fs.readFileSync(path.join(javaDir, 'ArchneDownloads.java'), 'utf8'));
   const codes = new Set([...dlJ.matchAll(/"e:(\w+)"/g)].map((m) => m[1]));
   assert(codes.size >= 10, 'ArchneDownloads memakai kode galat e:*');
   for (const c of codes) assert(W.en['e_' + c] && W.id['e_' + c], 'kode galat tanpa terjemahan en+id: e:' + c);
   for (const k of Object.keys(W.en)) if (/^e_/.test(k)) assert(codes.has(k.slice(2)), 'terjemahan galat yatim (tak ada di Java): ' + k);
   for (const m of dlJ.matchAll(/(?:IOException|error)\(\s*"((?:[^"\\\n]|\\.)*)"/g)) assert(/^(e:\w+|cancel)$/.test(m[1]), 'ArchneDownloads: galat harus kode, bukan kalimat: "' + m[1] + '"');
-  const run = (store, readyInfo) => {
-    const doc = {}, win = {}, execs = [], posted = [], chan = {}, msg = { style: {}, textContent: '' };
-    const frame = { style: {}, contentWindow: { postMessage(m, o) { posted.push(m); } } };
+
+  const { env } = require('./_mobilewrap');
+  const hasBg = (e, act) => e.plug('ArchneBackground').filter((c) => c.act === act);
+  const msgOf = (store) => { const m = { style: {}, textContent: '' }; return m; };
+  // teks awal sebelum inti siap: bahasa terakhir dari localStorage
+  for (const [store, want] of [[{}, 'Starting Archne...'], [{ 'lc.lang': 'id' }, 'Memulai Archne...']]) {
+    const m = { style: {}, textContent: '' }, store2 = Object.assign({}, store), win = [];
     const ctx = {
-      document: { getElementById: (i) => (i === 'f' ? frame : msg), addEventListener: (t, f) => { doc[t] = f; }, documentElement: {} },
-      localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
-      nodejs: { channel: { on: (t, f) => { chan[t] = f; }, post() {} }, start() {} },
-      cordova: { exec(okf, erf, plug, act, args) { execs.push({ plug, act, okf, erf, args: JSON.parse(JSON.stringify(args)) }); } },
-      setTimeout: () => 0, setInterval: () => 0, clearInterval() {}, console, addEventListener: (t, f) => { win[t] = f; },
+      console, Promise, JSON, Array, String, Number, isFinite, RegExp, Object, setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0, clearInterval() {},
+      document: { getElementById: (i) => (i === 'f' ? { style: {} } : m), documentElement: {} },
+      localStorage: { getItem: (k) => (k in store2 ? store2[k] : null), setItem: (k, v) => { store2[k] = String(v); }, removeItem: (k) => { delete store2[k]; } },
+      Capacitor: { Plugins: { Nodejs: { addListener: async () => {}, send: async () => {} } }, registerPlugin: () => null }, addEventListener() {},
     };
     ctx.window = ctx; vm.createContext(ctx); vm.runInContext(script, ctx);
-    return { doc, win, chan, execs, posted, msg, frame, store, ctx, ready: (i) => { doc.deviceready(); chan.ready(Object.assign({ port: 4321, token: 'tok' }, i || {})); } };
-  };
-  let w = run({});
-  assert.strictEqual(w.msg.textContent, 'Starting Archne...', 'bawaan English');
-  w = run({ 'lc.lang': 'id' });
-  assert.strictEqual(w.msg.textContent, 'Memulai Archne...', 'bahasa terakhir (localStorage) dipakai sebelum inti siap');
-  w = run({}); w.ready({ lang: 'id' });
-  const st = w.execs.find((x) => x.act === 'start');
-  assert.deepStrictEqual(st.args, [4321, 'tok', 'id'], 'start() membawa bahasa dari inti');
+    assert.strictEqual(m.textContent, want, 'teks awal pembungkus mengikuti bahasa terakhir');
+  }
+  let w = await env(null, { lang: 'id' });
+  assert.deepStrictEqual(hasBg(w, 'start')[0].args, { port: 4321, token: 'tok', lang: 'id' }, 'start() membawa bahasa dari inti');
   assert.strictEqual(w.store['lc.lang'], 'id', 'bahasa dicatat');
-  w = run({ 'lc.lang': 'id' }); w.ready({});
-  assert.deepStrictEqual(w.execs.find((x) => x.act === 'start').args, [4321, 'tok', 'en'], 'inti tanpa lang (versi lama) = en, cache dibuang');
-  assert(!('lc.lang' in w.store));
-  w = run({}); w.ready({ lang: 'en' });
-  const ORIGIN = 'http://127.0.0.1:4321';
-  w.win.message({ origin: ORIGIN, source: w.frame.contentWindow, data: { archne: 'native', action: 'lang', lang: 'id' } });
-  assert.deepStrictEqual(w.execs.filter((x) => x.act === 'setLang').map((x) => x.args), [['id']], 'UI ganti bahasa -> plugin setLang');
-  w.win.message({ origin: 'http://evil', source: w.frame.contentWindow, data: { archne: 'native', action: 'lang', lang: 'en' } });
-  assert.strictEqual(w.execs.filter((x) => x.act === 'setLang').length, 1, 'origin asing diabaikan');
+  w = await env(null, {}); assert.deepStrictEqual(hasBg(w, 'start')[0].args.lang, 'en', 'inti tanpa lang (versi lama) = en');
+  w = await env(null, { lang: 'en' });
+  await w.post({ archne: 'native', action: 'lang', lang: 'id' });
+  assert.deepStrictEqual(hasBg(w, 'setLang').map((x) => x.args), [{ lang: 'id' }], 'UI ganti bahasa -> plugin setLang');
+  await w.post({ archne: 'native', action: 'lang', lang: 'en' }, { origin: 'http://evil' });
+  assert.strictEqual(hasBg(w, 'setLang').length, 1, 'origin asing diabaikan');
   // galat plugin unduhan diterjemahkan sesuai bahasa; pesan sistem mentah diteruskan apa adanya
   for (const [l, tt] of [['en', W.en.e_storageFull], ['id', W.id.e_storageFull]]) {
-    w = run({}); w.ready({ lang: l, dxout: '/data/user/0/x/dxout' });
-    w.win.message({ origin: ORIGIN, source: w.frame.contentWindow, data: { archne: 'native', action: 'dxpick', id: 7, job: 'j1' } });
-    w.execs.find((x) => x.act === 'access').okf('ok');
-    w.execs.find((x) => x.act === 'pick').erf('e:storageFull');
-    assert.strictEqual(w.posted.filter((m) => m.archne === 'native-pick').pop().err, tt, 'galat pilih berkas (' + l + ')');
+    const e = await env((p, act) => { if (act === 'access') return { value: 'ok' }; throw 'e:storageFull'; }, { lang: l, dxout: '/data/user/0/x/dxout' });
+    await e.post({ archne: 'native', action: 'dxpick', id: 7, job: 'j1' });
+    assert.strictEqual(e.sent().filter((m) => m[0].archne === 'native-pick').pop()[0].err, tt, 'galat pilih berkas (' + l + ')');
   }
-  w = run({}); w.ready({ lang: 'id', dxout: '/data/user/0/x/dxout' });
-  w.win.message({ origin: ORIGIN, source: w.frame.contentWindow, data: { archne: 'native', action: 'dxpick', id: 8, job: 'j2' } });
-  w.execs.find((x) => x.act === 'access').okf('ok'); w.execs.find((x) => x.act === 'pick').erf('EIO: pesan sistem');
-  assert.strictEqual(w.posted.filter((m) => m.archne === 'native-pick').pop().err, 'EIO: pesan sistem', 'pesan sistem mentah tidak diubah');
-  // teks yang dikirim ke UI mengikuti bahasa (sekarang id, setelah pesan lang di atas)
-  w.execs.length = 0;
-  w.win.message({ origin: ORIGIN, source: w.frame.contentWindow, data: { archne: 'native', action: 'battery' } });
-  w.execs.find((x) => x.act === 'batteryAsk').okf('ok');
-  assert.strictEqual(w.posted[w.posted.length - 1].text, W.id.battOk, 'info baterai berbahasa Indonesia setelah diganti');
-  w.win.message({ origin: ORIGIN, source: w.frame.contentWindow, data: { archne: 'native', action: 'lang', lang: 'en' } });
-  w.win.message({ origin: ORIGIN, source: w.frame.contentWindow, data: { archne: 'native', action: 'battery' } });
-  w.execs.filter((x) => x.act === 'batteryAsk').pop().okf('asked');
-  assert.strictEqual(w.posted[w.posted.length - 1].text, W.en.battAsk, 'dan kembali English');
+  w = await env((p, act) => { if (act === 'access') return { value: 'ok' }; if (act === 'pick') throw 'EIO: pesan sistem'; return { value: 'ok' }; }, { lang: 'id', dxout: '/data/user/0/x/dxout' });
+  await w.post({ archne: 'native', action: 'dxpick', id: 8, job: 'j2' });
+  assert.strictEqual(w.sent().filter((m) => m[0].archne === 'native-pick').pop()[0].err, 'EIO: pesan sistem', 'pesan sistem mentah tidak diubah');
+  // teks yang dikirim ke UI mengikuti bahasa
+  w = await env((p, act) => (act === 'batteryAsk' ? { value: 'ok' } : {}), { lang: 'id' });
+  await w.post({ archne: 'native', action: 'battery' });
+  assert.strictEqual(w.sent().pop()[0].text, W.id.battOk, 'info baterai berbahasa Indonesia');
+  await w.post({ archne: 'native', action: 'lang', lang: 'en' });
+  await w.post({ archne: 'native', action: 'battery' });
+  assert.strictEqual(w.sent().pop()[0].text, W.en.battOk, 'dan kembali English setelah diganti');
   ok('halaman pembungkus: kamus en==id, tanpa teks Indonesia di luar kamus, bahasa dari inti/cache/UI diteruskan ke plugin, origin dijaga');
 
   // sisi pengirim: inti Node mengirim lang di ready; UI mengirim pesan saat bahasa disimpan
-  assert(/lang: langNow\(\)/.test(rd('android', 'www', 'nodejs-project', 'main.js')), "main.js: ready membawa lang");
+  assert(/lang: langNow\(\)/.test(rd('mobile', 'shell', 'main.js')), 'main.js: ready membawa lang');
   assert(/postMessage\(\{ archne: 'native', action: 'lang', lang: pick \}/.test(rd('renderer', 'js', 'archne-lang.js')), 'archne-lang.js memberi tahu pembungkus');
-  const bgJ = rd('android', 'localplugins', 'archne-background', 'src', 'android', 'ArchneBackground.java');
-  assert(/"setLang"\.equals\(action\)/.test(bgJ) && /args\.length\(\) > 2/.test(bgJ), 'plugin: setLang + argumen lang pada start');
+  const bgJ = rd('mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'xyraori', 'archne', 'ArchneBackground.java');
+  assert(/public void setLang\(PluginCall/.test(bgJ) && /call\.getString\("lang"/.test(bgJ), 'plugin: setLang + argumen lang pada start');
   ok('jalur bahasa: inti (ready.lang) + UI (pesan lang) -> pembungkus -> plugin (start/setLang)');
-}
-
-console.log('i18n: semua lulus');
+})().then(() => console.log('i18n: semua lulus'), (e) => { console.error(e); process.exit(1); });

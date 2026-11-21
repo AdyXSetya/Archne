@@ -1,5 +1,5 @@
 'use strict';
-// Reaksi pesan (langkah 2 / rx1): model data dan aturan. Murni: tanpa jaringan, tanpa UI, tanpa Core, tanpa ICU (aman di nodejs-mobile Node 12).
+// Reaksi pesan (langkah 2 / rx1): model data dan aturan. Murni: tanpa jaringan, tanpa UI, tanpa Core, tanpa ICU (aman tanpa ICU).
 // Satu orang = satu reaksi per pesan (seperti WhatsApp). Tiap (pesan, pengirim) adalah satu register LWW:
 //   map = { [mid]: { [by]: { e, ts } } }
 //   mid = id pesan sasaran (32 hex); by = pengirim reaksi (16 hex, penanda tangan pesan pembawa, diverifikasi Core, TIDAK dibaca dari isi);

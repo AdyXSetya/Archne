@@ -1,0 +1,17 @@
+/* Layar panggilan: kartu channel (foto di pojok), bingkai hijau saat bicara, layar penuh tanpa tombol */
+#callov .cvh{flex-wrap:wrap}#callov .cvk{font-size:13px}
+/* Channel: foto profil di pojok kiri atas kartu (tanpa daftar peserta di bawah) */
+#callov .cvp{position:absolute;top:8px;left:8px;z-index:3;line-height:0}
+#callov .cvp .av{width:34px;height:34px;font-size:14px;margin:0;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
+#callov .cvg.chv .cva{display:none}
+/* Bicara: bingkai hijau pada foto profil dan kartu, seperti Discord */
+#callov .av{transition:box-shadow .12s}
+#callov .cvt.speaking .cvp .av,#callov .cvt.speaking .cva .av,#callov .cpl li.speaking .cpa .av,#callov .cav.speaking .av{box-shadow:0 0 0 3px #2fbf71}
+#callov .cvt::after{content:"";position:absolute;inset:0;border:3px solid transparent;border-radius:inherit;pointer-events:none;z-index:2;transition:border-color .12s}
+#callov .cvt.speaking::after{border-color:#2fbf71}
+/* Layar penuh (kartu diperbesar + tombol disembunyikan): kartu memenuhi layar; ketuk kartu untuk memunculkan tombol lagi */
+#callov.nobar{padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);gap:0}
+#callov.nobar>*:not(.cvg){display:none!important}
+#callov.nobar .cvg{max-width:none;margin:0;gap:0}
+#callov.nobar .cvt{border-radius:0}
+body.archne-pip #callov .cvp,body.archne-pip #callov .cvt::after{display:none}

@@ -11,15 +11,15 @@ Chat, call, and share files directly between devices.
 Your identity is just a key pair that lives on your own device.
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Version](https://img.shields.io/badge/version-0.30.0-blue)
+![Version](https://img.shields.io/badge/version-0.31.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Android%20%C2%B7%20Browser-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Node](https://img.shields.io/badge/node-LTS-339933)
+![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933)
 ![Languages](https://img.shields.io/badge/lang-English%20%C2%B7%20Indonesia-informational)
 
 **English** · [Bahasa Indonesia](README.id.md)
 
-[Features](#-features) · [Install](#-install) · [Build](#-build) · [How it works](#-how-it-works) · [Development](#-development)
+[Features](#-features) · [Install](#-install) · [Build](#-build) · [How it works](#-how-it-works) · [Development](#-development) · [Changelog](CHANGELOG.md)
 
 </div>
 
@@ -35,6 +35,14 @@ Most chat apps depend on a company's servers. Your account lives there, your mes
 Archne takes the opposite approach. Every device is an equal **peer**. Devices find each other on the same network (Wi-Fi or LAN) and exchange messages, calls, and files **directly**. There is no central server to trust, pay for, or lose. For friends on a different network, **cross-network mode** connects you with a private network code.
 
 > **Status: beta.** The core features work and are used day to day, but some parts may still change. Found a bug? Please open an issue.
+
+### 🆕 New in 0.31.0
+- **Android rebuilt on Capacitor 8** with the **Node 24** runtime. Cordova is gone.
+- **16 KB page size support** for newer Android devices (checked with `zipalign`).
+- **Desktop moved to Electron 45** (electron-builder 26).
+- Android: better call notifications (Answer / Decline, over the lock screen), edge-to-edge layout, back-button handling, and Pages export/import.
+
+> **Updating from 0.30.0?** This is a big internal change. Old app data is **not** carried over. Android only installs the new APK over the old one if both are signed with the same key; otherwise uninstall first. Full details in the [changelog](CHANGELOG.md).
 
 ---
 
@@ -86,7 +94,9 @@ Pages are your own post space, like a social profile that lives on your device.
 
 ### Requirements
 - **Windows 10 / 11** for the desktop app. The `.bat` scripts install Node.js LTS through `winget` if it is missing.
-- **Node.js LTS** (to run from source, use browser mode, or build).
+- **Node.js 22.12 or newer** (LTS recommended) to run from source, use browser mode, or build.
+- **Android 7.0 (API 24) or newer** to run the Android app.
+- **To build the APK:** JDK 21 and the Android SDK (platform 36, CMake). `mobile.bat` installs both if missing, so Android Studio is optional.
 - **Git** (optional, for cloning the repo).
 
 ### Easiest way (Windows)
@@ -149,22 +159,27 @@ build.bat            # or: npm run dist
 
 This produces an **NSIS** installer and a **portable** `.exe`. The first build downloads Electron components, so it takes a while.
 
+> Since Electron 42, `npm install` no longer downloads the Electron binary. `setup.bat` fetches it for you, or it is downloaded on the first `npm start`.
+
 ### Android (APK)
 
-Requires **JDK 17** and the **Android SDK**. Set them up once:
+One command does everything. On first run it installs **JDK 21** and the **Android SDK** (platform 36, CMake) if they are missing:
 
 ```bash
-setup-android.bat
+mobile.bat                    # debug APK (all ABIs)
+mobile.bat -Install           # ...then install it on a connected phone via adb
+mobile.bat -Release           # signed release APK
+mobile.bat -Release -Aab      # ...plus an AAB for Google Play
+mobile.bat -Abis arm64-v8a    # one ABI only (smaller APK)
 ```
 
-Then build the APK:
+The Android app is a pure **Capacitor 8** shell with the **Node 24** runtime from `@capawesome/capacitor-nodejs`, so the very same Archne core runs right on the phone. There is no Cordova. The Node runtime (`libnode.so`) is about 120 MB per CPU architecture, so the universal APK carries all supported architectures (`arm64-v8a`, `armeabi-v7a`, `x86_64`). The Play AAB delivers only the matching one per device.
 
-```bash
-build-android.bat             # debug APK
-build-android-release.bat     # release APK
-```
+#### Release signing (back this up)
 
-The Android app uses Cordova and `nodejs-mobile`, so the very same Archne core runs right on the phone.
+`-Release` signs the APK with `%USERPROFILE%\.archne\archne-release.jks` (alias `archne`, password in `release.pass` next to it). If the key does not exist yet, it is created on the first release build.
+
+**Copy that folder to a private place** such as a USB drive. Never commit it to Git or share it in a chat (`.gitignore` already blocks `*.jks`). Android only lets a new APK update an installed app when both are signed with the same key. If the key is lost, everyone has to uninstall first and loses their local data.
 
 ### Windows and Android together
 
@@ -182,9 +197,7 @@ build-all.bat
 | `serve.bat` | Run browser mode |
 | `firewall.bat` | Open Archne firewall rules (admin) |
 | `build.bat` | Build the Windows installer |
-| `setup-android.bat` | Set up JDK and Android SDK |
-| `build-android.bat` | Build the debug APK |
-| `build-android-release.bat` | Build the release APK |
+| `mobile.bat` | Build the Android APK (`-Install`, `-Release`, `-Aab`, `-Abis`) |
 | `build-all.bat` | Build Windows and Android |
 
 Script logs are saved in the `logs/` folder.
@@ -216,6 +229,8 @@ Script logs are saved in the `logs/` folder.
 | Friend is on another network | Use cross-network mode: share your network code or the `archne://join?...` invite link. |
 | Calls fail across networks | Configure a TURN provider (Cloudflare, Metered, or manual) in Settings. |
 | Something looks wrong | Run `debug.bat` and check the `logs/` folder, then open an issue with the details. |
+| Android app misbehaves | Connect the phone and run `adb logcat -s NodejsPlugin chromium Capacitor` to see the Node and WebView logs. |
+| New APK will not install over the old one | The signing key differs. Uninstall the old app first (local data is lost). |
 
 ---
 
@@ -243,8 +258,10 @@ archne/
 │   ├── css/                Styles
 │   ├── i18n/               Language dictionaries (en, id)
 │   └── vendor/             Third-party libraries (MQTT, RNNoise)
-├── android/                Android shell (Cordova + nodejs-mobile)
+├── mobile/                 Android shell (Capacitor 8 + Node 24)
 ├── scripts/                Setup and build scripts
+├── docs/                   Planning notes and test baseline
+├── CHANGELOG.md            Release history
 └── test/                   Test suite
 ```
 
@@ -252,7 +269,7 @@ archne/
 
 ### Adding a language or new text
 
-Add every new text key to both `renderer/i18n/archne-en.js` and `renderer/i18n/archne-id.js`. Background and conventions live in `PLAN-i18n.md`.
+Add every new text key to both `renderer/i18n/archne-en.js` and `renderer/i18n/archne-id.js`. Background and conventions live in [`docs/PLAN-i18n.md`](docs/PLAN-i18n.md).
 
 ---
 

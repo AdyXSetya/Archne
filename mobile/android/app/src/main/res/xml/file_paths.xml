@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Berkas unduhan Archne ada di getFilesDir()/archne/downloads (dibuka lewat ArchneDownloads.open) -->
+    <files-path name="archne_files" path="." />
+    <external-files-path name="archne_external_files" path="." />
+    <external-path name="my_images" path="." />
+    <cache-path name="my_cache_images" path="." />
+</paths>

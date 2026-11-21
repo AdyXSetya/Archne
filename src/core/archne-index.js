@@ -1,5 +1,4 @@
 'use strict';
-require('../archne-compat'); // tambalan API untuk Node 12 (Android); no-op di Node baru
 // src/core/archne-index.js — class Core (constructor, start, _listen, stop) + perakitan mixin + ekspor. Method lain ada di berkas domain di folder ini.
 const net = require('net');
 const fs = require('fs');

@@ -1,5 +1,5 @@
 'use strict';
-// 5d-7: angka batas di README (bagian "Cadangan dan pemulihan halaman") harus sama dengan kode. Mengubah batas tanpa memperbarui README = gagal di sini.
+// 5d-7: angka batas di README.id.md (bagian "Cadangan dan pemulihan halaman") harus sama dengan kode. Mengubah batas tanpa memperbarui README = gagal di sini.
 const assert = require('assert');
 const fs = require('fs'), path = require('path');
 const { ENTRIES_MAX, MANIFEST_MAX, FORMAT, MAGIC, FOOT_MAGIC } = require('../src/archne-pagearc');
@@ -8,7 +8,7 @@ const { POSTS_MAX, POST_MAX } = require('../src/archne-pageimport');
 const { CMT_STORE_MAX, CMT_RM_MAX } = require('../src/archne-pagecmt');
 const { MEDIA_MAX, FILES_MAX, VIDEOS_MAX, PAGE_FILE_MAX, PAGE_MEDIA_MAX, PAGE_VIDEO_MAX } = require('../src/archne-pagestore');
 
-const md = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+const md = fs.readFileSync(path.join(__dirname, '..', 'README.id.md'), 'utf8');
 const i = md.indexOf('## Cadangan dan pemulihan halaman');
 assert(i >= 0, 'README: bagian cadangan hilang');
 const sec = md.slice(i);

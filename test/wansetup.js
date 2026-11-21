@@ -140,7 +140,7 @@ const link = (o, v = '1') => 'archne://join?v=' + v + '&d=' + b64u(o);
   assert(/href="css\/archne-wan\.css"/.test(html) && fs.existsSync(path.join(root, 'renderer', 'css', 'archne-wan.css')), 'css/archne-wan.css dimuat');
   const ids = new Set([...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1])); const used = [...new Set([...blk.matchAll(/\$\('([^']+)'\)/g)].map((m) => m[1]))];
   assert.deepStrictEqual(used.filter((i) => !ids.has(i)), [], 'id yang dipakai skrip tetapi tidak ada di HTML');
-  const andr = fs.readFileSync(path.join(root, 'android', 'www', 'index.html'), 'utf8'); assert(!/connect-src/.test(andr), 'CSP cangkang Android tidak disentuh');
+  const andr = fs.readFileSync(path.join(root, 'mobile', 'shell', 'index.html'), 'utf8'); assert(/connect-src 'self' http:\/\/127\.0\.0\.1:\*;/.test(andr) && !/https?:\/\/\*/.test(andr) && !/connect-src[^;]*\bhttps:/.test(andr), 'CSP pembungkus Android tidak dilonggarkan');
   const pre = fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), ah = fs.readFileSync(path.join(root, 'renderer', 'archne-api-http.js'), 'utf8');
   for (const n of ['wanSettings', 'wanEnable', 'wanBroker', 'wanRotate', 'inviteMake', 'inviteApply']) { assert(new RegExp('^\\s{2}' + n + ':', 'm').test(pre), n); assert(ah.includes("'" + n + "'"), n); }
   assert(wanJs.includes("base64: location.protocol !== 'file:'"), 'Electron (file:) biner, adaptor HTTP base64');

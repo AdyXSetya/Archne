@@ -244,7 +244,7 @@ const flush = () => new Promise((r) => setImmediate(r));
   assert(/class="cvg focus"/.test(html) && /class="cvt[^"]*\bbig\b" data-vkey="PEER"/.test(html), '1-1 juga bisa diperbesar');
   // kontrak archne-index.html: ketukan, tombol kembali, papan ketik, dan reset saat panggilan bukan tampilan video
   const idx = require('./_src').htmlSrc();
-  assert(/a === 'focus'\) \{ vidFocus = b\.dataset\.vfocus/.test(idx) && /a === 'unfocus'\) \{ vidFocus = null/.test(idx));
+  assert(/a === 'focus'\) \{/.test(idx) && /vidFocus = k; callBar = false/.test(idx) && /a === 'unfocus'\) \{ vidFocus = null/.test(idx));
   assert(/focus: vidFocus/.test(idx) && /if \(!LC\.videoView\(v\)\) vidFocus = null/.test(idx) && /t\.dataset\.vfocus\) \{ e\.preventDefault\(\); vidFocus/.test(idx));
   assert(/\.cvg\.focus \.cvt:not\(\.big\)\{display:none\}/.test(idx) && /shrink: svg\(/.test(idx));
   ok('perbesar kartu video + tombol kembali');

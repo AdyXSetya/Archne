@@ -1,19 +1,24 @@
 {
   "name": "archne",
-  "version": "0.30.0",
+  "version": "0.31.0",
   "description": "SOSMED LOCAL",
   "main": "main.js",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "start": "electron .",
     "serve": "node server.js",
     "test": "node test/run-all.js",
-    "dist": "electron-builder --win"
+    "dist": "electron-builder --win",
+    "setup": "node scripts/auto.js setup",
+    "auto": "node scripts/auto.js"
   },
   "devDependencies": {
     "acorn": "^8.18.0",
-    "electron": "33.2.0",
-    "electron-builder": "25.1.8",
-    "resedit": "^2.0.3"
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0",
+    "resedit": "3.1.0"
   },
   "build": {
     "appId": "com.xyraori.archne",

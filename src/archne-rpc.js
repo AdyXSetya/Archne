@@ -40,6 +40,7 @@ function createRpc(opts) {
   const broadcast = (ch, payload) => {
     const data = `event: ${ch}\ndata: ${JSON.stringify(payload === undefined ? null : payload)}\n\n`;
     for (const res of clients) { try { res.write(data); } catch {} }
+    if (typeof opts.onEvent === 'function') { try { opts.onEvent(ch, payload); } catch {} } // cangkang (Android) ikut mendengar, mis. ekspor Halaman selesai
   };
 
   // Tindakan khusus platform (buka/tampilkan berkas): di Android ditangani cangkang lewat postMessage, bukan di sini.
@@ -54,7 +55,7 @@ function createRpc(opts) {
   const sendOut = opts.canNotify
     ? (ch, p) => broadcast(ch, ch === 'call' && p && p.ev === 'incoming' ? Object.assign({}, p, { av: core.avatarOf(p.peer) }) : p)
     : broadcast;
-  const ipc = register({ ipcMain, core, log, send: sendOut, shell, pickFiles: async () => [], rtcBase64: true }); // byte jembatan lintas jaringan lewat JSON: base64
+  const ipc = register({ ipcMain, core, log, send: sendOut, shell, pickFiles: async () => [], rtcBase64: true, pickSave: opts.pickSave, pickArc: opts.pickArc }); // pickSave / pickArc: cadangan Halaman (Android: tanpa dialog Electron, lihat mobile/shell/main.js) // byte jembatan lintas jaringan lewat JSON: base64
 
   // Setelah tawaran terkirim: salinan unggahan hanya boleh dihapus bila Core sudah membuat salinan sendiri (staged).
   // Kalau tidak, Core masih membaca berkas ini untuk mengirim ke penerima nanti.

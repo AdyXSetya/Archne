@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*; frame-src http://127.0.0.1:*; img-src 'self' data:">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Archne</title>
+<style>
+html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 system-ui,sans-serif}
+#f{position:fixed;inset:0;width:100%;height:100%;border:0;display:none;background:#0e141b}
+#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 22px;box-sizing:border-box;text-align:center}
+#boot img{width:112px;height:112px;border-radius:24px;box-shadow:0 8px 28px rgba(0,0,0,.55)}
+.spin{width:30px;height:30px;margin:26px 0 14px;border:3px solid rgba(230,233,238,.18);border-top-color:#e6e9ee;border-radius:50%;animation:sp .9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#boot.err .spin{display:none}
+#msg{white-space:pre-wrap;color:#9aa4b2;font-size:14px}
+#boot.err #msg{color:#e6e9ee;text-align:left;margin-top:22px}
+</style></head><body>
+<div id="boot"><img alt="Archne" src="data:image/webp;base64,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"><div class="spin"></div><div id="msg">Starting Archne...</div></div>
+<iframe id="f" allow="clipboard-write; microphone; camera; autoplay" title="Archne"></iframe>
+<script>if(!window.Capacitor||!window.Capacitor.registerPlugin){document.write('<script src="capacitor.js"><\/script>')}</script>
+<script>
+(function () {
+  var msg = document.getElementById('msg'), bootEl = document.getElementById('boot'), frame = document.getElementById('f'), origin = null, ready = false, dxoutRoot = null, paused = false;
+  // Jembatan Capacitor (v0.31.0). Plugin lokal (ArchneBackground/Audio/Downloads) dipanggil lewat nat(); bila belum terdaftar, janji ditolak dengan 'noplugin'.
+  var CAP = window.Capacitor, plugs = {};
+  function plug(n) { if (plugs[n] === undefined) { try { plugs[n] = (CAP && CAP.Plugins && CAP.Plugins[n]) || (CAP && CAP.registerPlugin ? CAP.registerPlugin(n) : null); } catch (x) { plugs[n] = null; } } return plugs[n]; }
+  function nat(n, m, a) { var p = plug(n); if (!p || typeof p[m] !== 'function') return Promise.reject('noplugin'); try { return Promise.resolve(p[m](a || {})); } catch (x) { return Promise.reject(x); } }
+  function emsg(er) { return er && er.message != null ? String(er.message) : String(er == null ? '' : er); }
+  var noop = function () {};
+  // Bahasa halaman pembungkus (di luar iframe; i18n renderer tidak sampai ke sini). Sumber: bahasa aplikasi di Core, dikirim inti Node lewat 'ready'
+  // (info.lang) dan lewat pesan 'lang' dari UI saat pengguna menggantinya. Disimpan di localStorage 'lc.lang' agar teks sebelum inti siap (Memulai..., galat)
+  // memakai bahasa terakhir. Bawaan en. Kunci en dan id HARUS sama (dijaga test/i18n.js).
+  var W = {
+    en: {
+      start: 'Starting Archne...',
+      pickFail: 'Could not open the file picker: {e}', saveFail: 'Could not copy to the Download folder: {e}', saveFail2: 'Could not copy to the Download folder', unknown: 'unknown',
+      fatal: 'The Archne core failed to start:\n\n{m}\n\nSee logcat (tag NodejsPlugin) for details.',
+      nodeFail: 'Node failed to run: {e}',
+      noReply: 'The Archne core has not responded after 25 seconds.\nClose the app and open it again. If it keeps happening, check logcat (tag NodejsPlugin).',
+      na: 'not available', noPlugin: 'plugin missing', close: 'Close',
+      battOk: 'Already excluded from battery optimization.', battAsk: 'Choose Allow so Archne keeps running while the screen is off.',
+      battManual: 'Could not open the battery settings. Set it manually: Settings > Apps > Archne > Battery > Unrestricted.', battFail: 'Could not open the battery settings.',
+      noApp: 'No app can open this file',
+      e_permDenied: 'Storage permission was denied', e_badArgs: 'Invalid arguments', e_tmpDir: 'Could not create the temporary folder', e_readPick: 'Could not read the selected file',
+      e_storageFull: 'Phone storage is full', e_srcGone: 'The source file no longer exists', e_mediaDenied: 'Android refused to create the file', e_writeDl: 'Could not write to Download',
+      e_dlDir: 'Could not create the Download folder', e_tooMany: 'Too many files with the same name'
+    },
+    id: {
+      start: 'Memulai Archne...',
+      pickFail: 'Gagal membuka pemilih berkas: {e}', saveFail: 'Gagal menyalin ke folder Download: {e}', saveFail2: 'Gagal menyalin ke folder Download', unknown: 'tidak diketahui',
+      fatal: 'Inti Archne gagal dimulai:\n\n{m}\n\nLihat logcat (tag NodejsPlugin) untuk detail.',
+      nodeFail: 'Node gagal dijalankan: {e}',
+      noReply: 'Inti Archne belum menjawab setelah 25 detik.\nTutup aplikasi lalu buka lagi. Bila tetap begini, lihat logcat (tag NodejsPlugin).',
+      na: 'tidak tersedia', noPlugin: 'plugin tidak ada', close: 'Tutup',
+      battOk: 'Sudah dikecualikan dari penghematan baterai.', battAsk: 'Pilih Izinkan agar Archne tetap aktif saat layar mati.',
+      battManual: 'Tidak bisa membuka pengaturan baterai. Atur manual: Pengaturan > Aplikasi > Archne > Baterai > Tanpa batasan.', battFail: 'Tidak bisa membuka pengaturan baterai.',
+      noApp: 'Tidak ada aplikasi untuk membuka berkas ini',
+      e_permDenied: 'izin penyimpanan ditolak', e_badArgs: 'argumen tidak sah', e_tmpDir: 'folder sementara tidak bisa dibuat', e_readPick: 'tidak bisa membaca berkas pilihan',
+      e_storageFull: 'Penyimpanan HP penuh', e_srcGone: 'berkas sumber tidak ada', e_mediaDenied: 'MediaStore menolak membuat berkas', e_writeDl: 'tidak bisa menulis ke Download',
+      e_dlDir: 'folder Download tidak bisa dibuat', e_tooMany: 'terlalu banyak berkas bernama sama'
+    }
+  };
+  var lang = 'en';
+  try { if (localStorage.getItem('lc.lang') === 'id') lang = 'id'; } catch (x) {}
+  function T(k, p) { var t = (W[lang] || W.en)[k]; if (t == null) t = W.en[k]; if (t == null) return k; if (p) for (var n in p) t = t.split('{' + n + '}').join(String(p[n])); return t; }
+  // Galat plugin ArchneDownloads: kode "e:<nama>" -> teks bahasa aplikasi; selain itu (pesan sistem, kosong) apa adanya.
+  function nerr(er) { er = emsg(er); var m = /^e:(\w+)$/.exec(er); return m && (W[lang] || W.en)['e_' + m[1]] != null ? T('e_' + m[1]) : er; }
+  function setLang(l) {
+    l = l === 'id' ? 'id' : 'en';
+    lang = l; try { document.documentElement.lang = l; } catch (x) {}
+    try { if (l === 'id') localStorage.setItem('lc.lang', 'id'); else localStorage.removeItem('lc.lang'); } catch (x) {}
+    if (!ready) msg.textContent = T('start');
+  }
+  setLang(lang);
+  function show(t) { try { bootEl.className = 'err'; } catch (x) {} bootEl.style.display = 'flex'; msg.textContent = t; msg.style.display = 'block'; frame.style.display = 'none'; }
+
+  var MIME = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', mp4: 'video/mp4', mkv: 'video/x-matroska',
+    mp3: 'audio/mpeg', m4a: 'audio/mp4', ogg: 'audio/ogg', wav: 'audio/wav', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip', json: 'application/json',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+  function tell(m) { try { frame.contentWindow.postMessage(m, origin); } catch (x) {} }
+  function tellCaps() { tell({ archne: 'native-caps', audio: true, pick: !!dxoutRoot }); }
+  function tellApp(state) { tell({ archne: 'native-app', state: state }); }
+  var pipNow = null;
+  function pipEvt(on) { if (pipNow === on) return; pipNow = on; tell({ archne: 'native-app', state: 'pip', on: on }); }
+
+  // Inti Node siap: layanan latar depan, notifikasi, lalu muat UI di iframe.
+  function onReady(info) {
+    if (ready || !info) return;
+    ready = true;
+    setLang(info.lang);
+    // layanan latar depan (agar tetap tersambung saat aplikasi di belakang) + notifikasi pesan masuk
+    nat('ArchneBackground', 'start', { port: info.port, token: info.token, lang: lang }).catch(noop);
+    // Minta pengecualian penghematan baterai (sekali saja; jeda agar tidak bertumpuk dengan dialog izin notifikasi Android 13+).
+    setTimeout(function () { nat('ArchneBackground', 'batteryAsk', { manual: false }).catch(noop); }, 5000);
+    origin = 'http://127.0.0.1:' + info.port;
+    dxoutRoot = typeof info.dxout === 'string' ? info.dxout : null; // folder salinan sementara Kirim Langsung (dihapus inti Node)
+    frame.onload = function () { bootEl.style.display = 'none'; msg.style.display = 'none'; frame.style.display = 'block'; tellCaps(); setTimeout(openTappedChat, 900); };
+    frame.src = origin + '/s/' + info.token + '/'; // sesi lewat jalur URL: iframe lintas situs tidak bisa memakai cookie di WebView
+  }
+  // Berkas selesai diterima: salin ke folder Download publik lewat plugin lokal ArchneDownloads (MediaStore di Android 10+).
+  function onSaved(info) {
+    if (!info || typeof info.path !== 'string' || info.path.indexOf('/data/') !== 0 && info.path.indexOf('/storage/') !== 0) return;
+    var ext = (info.path.split('.').pop() || '').toLowerCase(), mime = MIME[ext] || 'application/octet-stream';
+    var sub = typeof info.sub === 'string' ? info.sub : ''; // subfolder di dalam Download (Kirim Langsung: file_transfer/...)
+    nat('ArchneDownloads', 'save', { path: info.path, name: info.name, mime: mime, sub: sub }).then(
+      function (r) { tell({ archne: 'native-saved', name: String((r && r.name) || info.name), dir: sub }); },
+      function (er) { tell({ archne: 'native-error', err: T('saveFail', { e: nerr(er) || T('unknown') }) }); });
+  }
+
+  function boot() {
+    var Node = plug('Nodejs');
+    if (!Node) { show(T('nodeFail', { e: T('noPlugin') })); return; }
+    // Nama event aplikasi berawalan "archne:" agar tidak bentrok dengan event bawaan plugin (ready/message).
+    Node.addListener('message', function (e) {
+      var n = e && e.eventName, a = (e && e.args) || [];
+      if (n === 'archne:ready') onReady(a[0]);
+      else if (n === 'archne:saved') onSaved(a[0]);
+      else if (n === 'archne:arcpick') arcPick();
+      else if (n === 'archne:fatal') show(T('fatal', { m: a[0] }));
+    }).catch(function (er) { show(T('nodeFail', { e: emsg(er) })); });
+    // Node dimulai otomatis (startMode auto). Pesan 'ready' yang terkirim sebelum pendengar terpasang hilang, juga saat aplikasi dibuka
+    // ulang selagi inti Node masih hidup: karena itu halaman menanyakan port dan token tiap detik sampai dijawab.
+    var hello = setInterval(function () {
+      if (ready) { clearInterval(hello); return; }
+      try { Node.send({ eventName: 'archne:hello', args: ['hi'] }).catch(noop); } catch (x) {}
+    }, 1000);
+    setTimeout(function () { if (!ready) show(T('noReply')); }, 25000);
+    var A = plug('App');
+    if (A) {
+      // Aplikasi ke latar belakang / kembali: UI diberi tahu (Android memutus kamera di latar belakang, jadi kamera channel dimatikan sebelum membeku).
+      // Masuk Picture-in-Picture juga memicu pause, tetapi aplikasi masih tampil (jendela kecil): jangan dilaporkan ke latar belakang.
+      // Jadi 'background' dikirim setelah jeda singkat, dan hanya bila PiP tidak aktif.
+      A.addListener('pause', function () {
+        paused = true;
+        setTimeout(function () {
+          if (!paused) return;
+          nat('ArchneBackground', 'pipState').then(function (r) { if (!(r && r.on === true)) tellApp('background'); }, function () { tellApp('background'); });
+        }, 400);
+      }).catch(noop);
+      // Tombol Kembali perangkat (mendengarkan peristiwa ini mematikan perilaku bawaan, jadi diatur di sini): UI dulu (tutup dialog, kecilkan panggilan),
+      // lalu riwayat (chat -> daftar, penampil gambar; riwayat iframe ikut riwayat halaman ini), terakhir aplikasi disembunyikan, tidak ditutup (layanan latar tetap hidup).
+      A.addListener('backButton', function (ev) {
+        var can = !!(ev && ev.canGoBack);
+        askBack(function (used) {
+          if (used) return;
+          if (can) { try { window.history.back(); } catch (x) {} return; }
+          if (typeof A.minimizeApp === 'function') A.minimizeApp().catch(noop); else if (typeof A.exitApp === 'function') A.exitApp().catch(noop);
+        });
+      }).catch(noop);
+      A.addListener('resume', function () { paused = false; setTimeout(openTappedChat, 300); tellApp('foreground'); }).catch(noop);
+    }
+    // Kabar PiP lewat dua jalur (listener plugin dan kejadian window dari MainActivity); pipEvt membuang kabar ganda.
+    // Jendela PiP ditutup TIDAK dianggap latar belakang: kamera dibiarkan (Android yang menentukan).
+    var P = plug('ArchneBackground');
+    if (P && typeof P.addListener === 'function') {
+      try {
+        var h = P.addListener('pip', function (e) { pipEvt(!!(e && e.on)); });
+        if (h && typeof h.catch === 'function') h.catch(noop);
+      } catch (x) {}
+    }
+    try { window.addEventListener('archnepip', function (e) { pipEvt(!!(e && e.on)); }); } catch (x) {}
+  }
+
+  // Ketukan pada notifikasi: buka chat yang bersangkutan di UI. Tombol "Jawab" di notifikasi panggilan: UI diminta menjawab panggilan itu.
+  function openTappedChat() {
+    if (!ready) return;
+    nat('ArchneBackground', 'takeChat').then(function (r) { var key = r && r.key; if (key) tell({ archne: 'open-chat', key: String(key) }); }, noop);
+    nat('ArchneBackground', 'takeAnswer').then(function (r) { var cid = r && r.cid; if (cid) startAnswer(String(cid)); }, noop);
+  }
+  // "Jawab" dari notifikasi: pesan ke UI dikirim ULANG sampai UI mengaku sudah menjawab ('answer-done') atau 20 dtk lewat. Satu kali kirim saja bisa hilang
+  // bila Android mematikan WebView saat game di depan dan UI sedang dimuat ulang (pengguna lalu harus menekan Terima lagi).
+  var ansCid = null, ansUntil = 0, ansTimer = null;
+  function pushAnswer() { if (!ansCid || Date.now() > ansUntil) { stopAnswer(); return; } tell({ archne: 'answer-call', cid: ansCid }); }
+  function stopAnswer() { ansCid = null; if (ansTimer) { clearInterval(ansTimer); ansTimer = null; } }
+  function startAnswer(cid) { ansCid = cid; ansUntil = Date.now() + 20000; pushAnswer(); if (!ansTimer) ansTimer = setInterval(pushAnswer, 700); }
+
+  // Audio panggilan suara lewat plugin ArchneAudio. UI (iframe) minta: hello (tanya kemampuan), mic (izin RECORD_AUDIO), cam (izin CAMERA),
+  // call-begin / call-end (mode panggilan + layanan latar), speaker (rute suara). Jawaban selalu { native-reply, id, ok, res }.
+  var AUDIO_ACT = { hello: 'hello', mic: 'mic', cam: 'cam', 'call-begin': 'begin', 'call-end': 'end', speaker: 'speaker' };
+  function audioAsk(d) {
+    if (d.action === 'hello') { tellCaps(); return; }
+    if (typeof d.id !== 'number' || !isFinite(d.id)) return;
+    var reply = function (ok, res) { tell({ archne: 'native-reply', id: d.id, ok: ok, res: res }); };
+    nat('ArchneAudio', AUDIO_ACT[d.action], d.action === 'speaker' ? { on: d.on === true } : {}).then(
+      function (r) { var v = r && r.value; reply(d.action === 'mic' || d.action === 'cam' ? v === 'granted' : true, v == null ? '' : String(v)); },
+      function (er) { reply(false, emsg(er) || 'error'); });
+  }
+  // Kirim Langsung dari HP: pilih berkas dengan path aslinya (plugin ArchneDownloads). Jawaban { native-pick, id, ok, paths | code: perm|cancel|err, err }.
+  // d.skip = pengguna sudah pernah diminta izin: lanjut memilih walau izin belum ada (berkas yang tak terbaca disalin).
+  function dxPick(d) {
+    var say = function (o) { o.archne = 'native-pick'; o.id = d.id; tell(o); };
+    if (typeof d.id !== 'number' || !isFinite(d.id)) return;
+    if (!dxoutRoot || typeof d.job !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(d.job)) { say({ ok: false, code: 'err', err: T('na') }); return; }
+    var go = function () {
+      nat('ArchneDownloads', 'pick', { root: dxoutRoot, job: d.job }).then(
+        function (r) { var list = r && r.paths; say({ ok: true, paths: Array.isArray(list) ? list.filter(function (p) { return typeof p === 'string'; }) : [] }); },
+        function (er) { say({ ok: false, code: emsg(er) === 'cancel' ? 'cancel' : 'err', err: emsg(er) === 'noplugin' ? T('noPlugin') : nerr(er) }); });
+    };
+    var ask = function () { var done = function () { say({ ok: false, code: 'perm' }); }; nat('ArchneDownloads', 'askAccess').then(done, done); };
+    nat('ArchneDownloads', 'access').then(function (r) { if ((r && r.value) === 'ok' || d.skip === true) go(); else ask(); }, function () { go(); });
+  }
+  // Tombol Kembali: tanya UI di iframe apakah ia menanganinya. Tanpa jawaban dalam 300 ms (UI belum dimuat / macet) dianggap tidak.
+  var backId = 0, backCb = null, backTm = null;
+  function askBack(cb) {
+    if (backCb) { var old = backCb; backCb = null; clearTimeout(backTm); old(true); } // tekanan beruntun: yang lama dianggap selesai
+    if (!ready) { cb(false); return; }
+    var id = ++backId;
+    backCb = function (used) { cb(used); };
+    backCb.id = id;
+    backTm = setTimeout(function () { if (backCb && backCb.id === id) { var f = backCb; backCb = null; f(false); } }, 300);
+    tell({ archne: 'native-app', state: 'back', id: id });
+  }
+  function backResult(d) {
+    if (!backCb || backCb.id !== d.id) return;
+    var f = backCb; backCb = null; clearTimeout(backTm); f(d.on === true);
+  }
+  // Impor arsip Halaman: Node meminta pemilih berkas sistem (satu berkas); jalurnya (asli atau salinan sementara) dikirim balik. Batal / gagal = jalur kosong.
+  function arcPick() {
+    var back = function (p) { try { plug('Nodejs').send({ eventName: 'archne:arcpicked', args: [{ path: p }] }).catch(noop); } catch (x) {} };
+    if (!dxoutRoot) { back(''); return; }
+    nat('ArchneDownloads', 'pick', { root: dxoutRoot, job: 'arcimp', multiple: false }).then(
+      function (r) { var l = r && r.paths; back(Array.isArray(l) && typeof l[0] === 'string' ? l[0] : ''); },
+      function (er) { back(''); if (emsg(er) !== 'cancel') tell({ archne: 'native-error', err: T('pickFail', { e: nerr(er) || T('unknown') }) }); });
+  }
+  // Tautan web dari chat: dibuka di Chrome Custom Tabs (@capacitor/browser; UI Mundur/Maju/Tutup milik sistem). Tanpa plugin: peramban sistem.
+  // Hanya http(s) dan paling panjang 2048 karakter yang diteruskan.
+  function openWeb(d) {
+    var u = typeof d.url === 'string' ? d.url : '';
+    if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2048) return;
+    nat('Browser', 'open', { url: u }).catch(function () { try { window.open(u, '_system'); } catch (y) {} });
+  }
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (!origin || e.origin !== origin || e.source !== frame.contentWindow) return;
+    if (d && d.archne === 'native' && d.action === 'lang') { // UI mengganti bahasa: teks pembungkus + teks native (notifikasi) ikut
+      setLang(d.lang);
+      nat('ArchneBackground', 'setLang', { lang: lang }).catch(noop);
+      return;
+    }
+    if (d && d.archne === 'answer-done') { stopAnswer(); return; }
+    if (d && d.archne === 'native' && d.action === 'back-result') { backResult(d); return; }
+    if (d && d.archne === 'native' && d.action === 'weburl') { openWeb(d); return; }
+    if (d && d.archne === 'native' && d.action === 'pip') { nat('ArchneBackground', 'pip', { on: d.on === true }).catch(noop); return; } // siaga Picture-in-Picture (panggilan video aktif)
+    if (d && d.archne === 'native' && d.action === 'dxpick') { dxPick(d); return; }
+    if (d && d.archne === 'native' && AUDIO_ACT.hasOwnProperty(d.action)) { audioAsk(d); return; }
+    if (d && d.archne === 'native' && d.action === 'battery') { // tombol "Jaga tetap aktif" di menu UI
+      var say = function (t) { tell({ archne: 'native-info', text: t }); };
+      nat('ArchneBackground', 'batteryAsk', { manual: true }).then(function (r) { var v = r && r.value; say(v === 'ok' ? T('battOk') : v === 'asked' ? T('battAsk') : T('battManual')); }, function () { say(T('battFail')); });
+      return;
+    }
+    // Tindakan bawaan perangkat dari UI (iframe): buka berkas hasil unduhan. Hanya dari iframe kita sendiri, hanya path di penyimpanan aplikasi.
+    if (!d || d.archne !== 'native' || typeof d.path !== 'string') return;
+    if (d.path.indexOf('/data/') !== 0 && d.path.indexOf('/storage/') !== 0) return;
+    var ext = (d.path.split('.').pop() || '').toLowerCase(), mime = MIME[ext] || '*/*';
+    nat('ArchneDownloads', d.action === 'show' ? 'openWith' : 'open', { path: d.path, mime: mime }).catch(function (er) {
+      var m = emsg(er); tell({ archne: 'native-error', err: !m || m === 'noplugin' || m === 'noapp' ? T('noApp') : nerr(er) });
+    });
+  });
+  boot();
+})();
+</script>
+</body></html>

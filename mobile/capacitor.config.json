@@ -1,0 +1,16 @@
+{
+  "appId": "com.xyraori.archne",
+  "appName": "Archne",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  },
+  "plugins": {
+    "Nodejs": {
+      "nodeDir": "nodejs",
+      "startMode": "auto"
+    }
+  },
+  "backgroundColor": "#0E141B"
+}

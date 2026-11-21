@@ -95,6 +95,15 @@ input:focus,textarea:focus{border-color:var(--acc);outline:0}
 #callov .cvg.focus .cvt.big{flex:1;aspect-ratio:auto}
 #callov .cvx{position:absolute;top:8px;right:8px;z-index:3;width:38px;height:38px;border-radius:50%;border:0;background:rgba(0,0,0,.5);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 #callov .cvx svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* Picture-in-Picture (jendela kecil Android): satu kartu video saja (kelas pipsel dipasang UI), semua kontrol dan kartu lain disembunyikan */
+body.archne-pip #callov{padding:0;gap:0;background:#000;justify-content:stretch;align-items:stretch}
+body.archne-pip #callov>*:not(.cvg){display:none!important}
+body.archne-pip #callov .cvg{display:flex!important;flex:1;width:100%;max-width:none;margin:0;gap:0;overflow:hidden}
+body.archne-pip #callov .cvg .cvt{display:none!important;border-radius:0;aspect-ratio:auto;flex:1;pointer-events:none}
+body.archne-pip #callov .cvg .cvt.pipsel{display:flex!important}
+body.archne-pip #callov .cvx,body.archne-pip #callov .cvs
+body.archne-pip #callov .cvn{left:6px;bottom:6px;font-size:11px;padding:2px 7px}
+body.archne-pip #callov .cvt .cva .av{width:56px;height:56px;font-size:22px}
 #callov .cvs{position:absolute;top:8px;left:0;right:0;text-align:center;z-index:2;font-size:12px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7)}
 #callov .cvn .cbd{margin-left:4px;color:#ff8a8a;vertical-align:middle}
 #callov .cvn{position:absolute;left:10px;bottom:8px;z-index:2;max-width:80%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;color:#fff;background:rgba(0,0,0,.45);padding:3px 9px;border-radius:999px}
@@ -115,8 +124,6 @@ input:focus,textarea:focus{border-color:var(--acc);outline:0}
 #callov .cvg[data-n="7"] .cva .av,#callov .cvg[data-n="8"] .cva .av{width:44px;height:44px;font-size:18px}
 /* Channel dengan kamera hidup (maks 4 kartu): satu kartu = satu kolom; daftar peserta suara di bawah kartu dan digulir sendiri bila panjang */
 #callov .cvg[data-n="1"]{--c:1;--r:1;max-width:720px}
-#callov .cvl{max-height:22vh;margin-top:10px;flex:0 0 auto}
-#callov .cvl li{padding:4px 6px}
 @media (max-width:480px){#callov .cvg~.cbtns .cbw{width:58px;font-size:11px}#callov .cvg~.cbtns .cbtn{width:48px;height:48px}} /* HP: bar bisa sampai 8 tombol */
 @media (min-width:760px){#callov .cvh,#callov .cvg{max-width:1100px}#callov .cvg[data-n="2"]{--c:2;--r:1}#callov .cvg[data-n="5"],#callov .cvg[data-n="6"]{--c:3;--r:2}#callov .cvg[data-n="7"],#callov .cvg[data-n="8"]{--c:4;--r:2}}
 #callov .cvt.camoff .cva{display:flex}

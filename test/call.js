@@ -25,7 +25,11 @@ const ok = (n) => { pass++; console.log('  OK  ' + n); };
   const all = [A, B, C, E];
   for (const n of all) await n.start();
   for (let i = 0; i < all.length; i++) await lan(all[i], ...all.slice(i + 1));
-  await until(() => all.every((n) => n.getState().peers.filter((p) => p.online).length === 3), 8000, 'mesh');
+  try { await until(() => all.every((n) => n.getState().peers.filter((p) => p.online).length === 3), 8000, 'mesh'); } catch (e) {
+    // Diagnosis: siapa yang terlihat online di tiap Core (peer asing = Archne asli/HP di LAN mencemari tes)
+    e.message += '\n' + all.map((n) => '  ' + n.name + ' (port ' + n.port + '): ' + n.getState().peers.filter((p) => p.online).map((p) => p.name + '@' + p.ip + ':' + p.port).join(', ')).join('\n');
+    throw e;
+  }
   const ea = rec(A), eb = rec(B), ec = rec(C);
 
   // ---------- panggilan normal: tawaran -> jawaban -> ICE dua arah -> tersambung -> akhir ----------
@@ -139,7 +143,7 @@ const ok = (n) => { pass++; console.log('  OK  ' + n); };
   await D.stop();
   A.peers.get(D.id).lastSeen = 0; // dianggap offline
   assert.throws(() => A.callStart(D.id, 'x'), /offline/);
-  assert.strictEqual(nstored(A) + nstored(B) + nstored(C), 0, 'tidak ada sinyal yang disimpan/dititipkan');
+  assert.strictEqual(nstored(A) + nstored(B) + nstored(C), 0, 'tidak ada sinyal yang disimpan/dititipkan (A=' + nstored(A) + ' B=' + nstored(B) + ' C=' + nstored(C) + '; c1=' + [A, B, C].map((c) => Object.values(c.store.msgs).filter((m) => m.kind === 'c1').length).join('/') + ' custody=' + [A, B, C].map((c) => Object.keys(c.store.custody).length).join('/') + ')');
   assert(!Object.values(A.store.status).includes('pending'), 'tidak masuk antrean kirim DM');
   ok('penerima offline: langsung ditolak, tidak ada antrean/kurir');
 

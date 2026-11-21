@@ -288,7 +288,7 @@ async function active(o) {
     assert(/notice\(t\) \{ toast\(t\); \}/.test(html), 'pemberitahuan gagal Kuat tampil sebagai toast');
     assert(/#callov \.cbtn\.nz-off/.test(html), 'gaya tombol bising Mati');
     assert(/@media \(min-width:760px\)[^\n]*\.cvg\[data-n="2"\]\{--c:2;--r:1\}/.test(html), 'video 1-1 berdampingan di layar lebar');
-    assert(!/getUserMedia/.test(read('android/www/index.html')), 'induk Android tidak menyentuh audio UI');
+    assert(!/getUserMedia/.test(read('mobile/shell/index.html')), 'pembungkus Android tidak menyentuh audio UI');
     assert(!/noiseSuppression|AudioWorklet/.test(html), 'logika peredam tinggal di archne-call.js');
     ok('archne-index.html: ketukan pilihan, toast, dan gaya terpasang; logika hanya di archne-call.js');
   }

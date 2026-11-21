@@ -114,18 +114,25 @@ if (window.addEventListener && window.parent && window.parent !== window) window
     const ok = d.key === 'public' || (d.key.startsWith('g:') ? S.groups.some((g) => 'g:' + g.id === d.key) : /^[0-9a-f]{16}$/.test(d.key) && d.key !== S.me.id);
     if (ok) pickChat(d.key);
   } else if (d.archne === 'answer-call' && typeof d.cid === 'string' && d.cid.length > 0 && d.cid.length <= 64) { // tombol "Jawab" di notifikasi panggilan
-    wantAnswer = { cid: d.cid, until: Date.now() + 15000 };
+    if (d.cid === answeredCid) { tellAnswerDone(); return; } // kiriman ulang dari pembungkus untuk panggilan yang sudah dijawab
+    if (!wantAnswer || wantAnswer.cid !== d.cid) wantAnswer = { cid: d.cid, until: Date.now() + 15000 };
     tryAnswer();
   }
 });
 // Jawab dari notifikasi: panggilannya baru terlihat UI setelah state dimuat (halaman bisa dimuat ulang saat aplikasi dibuka), jadi coba lagi di tiap sinkronisasi sampai 15 dtk.
-let wantAnswer = null;
+let wantAnswer = null, answeredCid = null;
+function tellAnswerDone() { try { window.parent.postMessage({ archne: 'answer-done' }, '*'); } catch (e) {} } // pembungkus berhenti mengirim ulang
 function tryAnswer() {
   if (!wantAnswer) return;
-  if (Date.now() > wantAnswer.until) { wantAnswer = null; return; }
+  if (Date.now() > wantAnswer.until) { try { console.log('[answer] kedaluwarsa tanpa panggilan berdering yang cocok: ' + wantAnswer.cid); } catch (e) {} wantAnswer = null; tellAnswerDone(); return; }
   const c = callCtl && callCtl.cur;
-  if (!c || c.cid !== wantAnswer.cid || c.dir !== 'in' || c.phase !== 'ringing') return;
-  wantAnswer = null;
+  if (!c || c.cid !== wantAnswer.cid || c.dir !== 'in' || c.phase !== 'ringing') {
+    // Diagnosis (tampil di logcat, tag chromium): kenapa Jawab dari notifikasi belum menjawab. Dibatasi sekali per detik.
+    const t = Date.now(); if (!wantAnswer.logT || t - wantAnswer.logT > 1000) { wantAnswer.logT = t; try { console.log('[answer] menunggu: want=' + wantAnswer.cid + ' cur=' + (c ? c.cid + '/' + c.dir + '/' + c.phase : 'kosong')); } catch (e) {} }
+    return;
+  }
+  try { console.log('[answer] menjawab ' + wantAnswer.cid); } catch (e) {}
+  answeredCid = wantAnswer.cid; wantAnswer = null; tellAnswerDone();
   callCtl.accept();
 }
 // Balas pesan: pasang/lepas penanda balasan di atas kotak ketik.

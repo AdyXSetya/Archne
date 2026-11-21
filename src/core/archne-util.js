@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { DEFAULT_TCP_PORT, KINDS, LINE_MAX, MAX_CIPHER, MAX_TEXT, REPLY_OVERHEAD, REPLY_RE, SPAM_CMP_MAX, XTAG, canon, sha } = require('./archne-constants');
 
 const ribu = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); // pemisah ribuan gaya Indonesia, tanpa bergantung pada data ICU (Android tidak membawa locale id)
-// nodejs-mobile (Android) dibuat TANPA ICU: \p{L} melempar "Invalid property name in character class" dan normalize() tidak mengurai aksen.
+// Runtime Node di HP bisa dibuat TANPA ICU (dulu nodejs-mobile; dijaga tetap aman): \p{L} melempar "Invalid property name in character class" dan normalize() tidak mengurai aksen.
 // Jalur utama memakai properti Unicode; bila mesin tidak mendukung, dipakai daftar rentang tanda baca/simbol (tanpa ICU) dan normalize dilewati.
 const NON_ALNUM_FALLBACK = /[\u0000-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u00a9\u00ab-\u00b1\u00b4\u00b6-\u00b8\u00bb\u00bf\u00d7\u00f7\u2000-\u206f\u20a0-\u20cf\u2100-\u214f\u2190-\u2bff\u3000-\u303f\ufe00-\ufe0f\ufe30-\ufe6f\uff00-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65\ud800-\udfff]+/g;
 function buildSpamNorm(useProps, useNormalize) {

@@ -239,10 +239,10 @@ function parts4() {
   const preload = rd('preload.js'), ipc = rd('src/archne-ipc.js'), main = rd('main.js');
   for (const c of ['webOpen', 'webNav', 'webBounds', 'webClose', 'webExternal']) assert(preload.includes("invoke('" + c + "'") && ipc.includes("'" + c + "'"), 'saluran ' + c);
   assert(main.includes("'webstate'") && main.includes('WebContentsView'), 'main.js menyambungkan peramban');
-  const android = rd('android/www/index.html');
-  assert(/action === 'weburl'/.test(android) && /\^https\?:/.test(android) && /InAppBrowser/.test(android), 'cangkang Android: weburl -> InAppBrowser, hanya http(s)');
-  assert(/cordova-plugin-inappbrowser/.test(rd('scripts/android-build.ps1')), 'plugin InAppBrowser dipasang oleh skrip build Android');
-  ok('kontrak: markup bilah alat, urutan skrip, CSP tetap, saluran IPC, event webstate, cangkang Android + plugin');
+  const android = rd('mobile/shell/index.html');
+  assert(/action === 'weburl'/.test(android) && /\^https\?:/.test(android) && /nat\('Browser', 'open'/.test(android), 'cangkang Android: weburl -> Browser.open (Custom Tabs), hanya http(s)');
+  assert(/@capacitor\/browser/.test(rd('mobile/package.json')), 'plugin @capacitor/browser terpasang di mobile/package.json');
+  ok('kontrak: markup bilah alat, urutan skrip, CSP tetap, saluran IPC, event webstate, cangkang Android + plugin Browser');
 
   // modal bebas emoji (Step 3c)
   const EM = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u;

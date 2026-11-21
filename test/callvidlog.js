@@ -138,24 +138,21 @@ const flush = () => new Promise((r) => setImmediate(r));
   }
   ok('kamera ditolak di Android: lanjut suara saja dengan alasan yang terbaca utuh');
 
-  // ---------- 4. berkas cangkang Android ----------
-  const html = read('android', 'www', 'index.html');
+  // ---------- 4. berkas cangkang Android (Capacitor) ----------
+  const html = read('mobile', 'shell', 'index.html');
   const allow = (html.match(/<iframe id="f" allow="([^"]*)"/) || [])[1] || '';
   assert(allow.split(';').map((x) => x.trim()).includes('camera'), 'iframe mendelegasikan kamera (tanpa ini getUserMedia video ditolak WebView)');
-  assert(/cam: 'cam'/.test(html) && /d\.action === 'mic' \|\| d\.action === 'cam' \? r === 'granted'/.test(html), 'induk meneruskan cam dan menjawab ok hanya bila granted');
-  const px = read('android', 'localplugins', 'archne-audio', 'plugin.xml');
+  assert(/cam: 'cam'/.test(html) && /d\.action === 'mic' \|\| d\.action === 'cam' \? v === 'granted'/.test(html), 'pembungkus meneruskan cam dan menjawab ok hanya bila granted');
+  const px = read('mobile', 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
   assert(/android\.permission\.CAMERA/.test(px) && /android\.hardware\.camera" android:required="false"/.test(px) && /android\.hardware\.camera\.autofocus" android:required="false"/.test(px));
-  assert(/<plugin id="archne-audio" version="1\.(?:[1-9]|\d{2,})\.\d+"/.test(px), 'versi plugin dinaikkan agar build yang sudah ada memasangnya ulang');
-  assert(/"version": "1\.1\.0"/.test(read('android', 'localplugins', 'archne-audio', 'package.json')));
-  const java = read('android', 'localplugins', 'archne-audio', 'src', 'android', 'ArchneAudio.java');
-  assert(/"cam"\.equals\(action\)/.test(java) && /hasPermission\(Manifest\.permission\.CAMERA\)/.test(java) && /requestPermission\(this, REQ_CAM, Manifest\.permission\.CAMERA\)/.test(java));
-  assert(/REQ_MIC = 7303, REQ_CAM = 7304/.test(java) && /CallbackContext micCb, camCb/.test(java));
-  assert(/requestCode != REQ_MIC && requestCode != REQ_CAM/.test(java) && /shouldShowRequestPermissionRationale\(perm\)/.test(java), 'hasil izin dipisah per permintaan');
-  assert(!/shouldShowRequestPermissionRationale\(Manifest\.permission\.RECORD_AUDIO\)/.test(java), 'rationale tidak lagi dipatok ke mikrofon');
-  const svc = read('android', 'localplugins', 'archne-background', 'src', 'android', 'ArchneService.java');
+  const java = read('mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'xyraori', 'archne', 'ArchneAudio.java');
+  assert(/@Permission\(strings = \{ Manifest\.permission\.CAMERA \}, alias = "cam"\)/.test(java) && /public void cam\(PluginCall call\) \{ ask\(call, "cam", "camResult"\); \}/.test(java));
+  assert(/@PermissionCallback\s+private void micResult/.test(java) && /@PermissionCallback\s+private void camResult/.test(java), 'hasil izin dipisah per permintaan (mic dan cam)');
+  assert(/shouldShowRequestPermissionRationale\(perm\)/.test(java) && !/shouldShowRequestPermissionRationale\(Manifest\.permission\.RECORD_AUDIO\)/.test(java), 'rationale mengikuti izin yang diminta, bukan dipatok ke mikrofon');
+  const svc = read('mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'xyraori', 'archne', 'ArchneService.java');
   assert(/showCall\(cid, peer, name, [^;]*, video\);/.test(svc) && /showMissed\(peer, name == null \? "Archne" : name, video\);/.test(svc));
   assert(/ArchneLang\.s\(this, video \? "call_video" : "call_voice"\)/.test(svc) && /ArchneLang\.s\(this, video \? "missed_video" : "missed_voice"\)/.test(svc));
-  { const xid = read('android', 'localplugins', 'archne-background', 'src', 'android', 'res', 'values-in', 'archne_strings.xml'), xen = read('android', 'localplugins', 'archne-background', 'src', 'android', 'res', 'values', 'archne_strings.xml');
+  { const xid = read('mobile', 'android', 'app', 'src', 'main', 'res', 'values-in', 'archne_strings.xml'), xen = read('mobile', 'android', 'app', 'src', 'main', 'res', 'values', 'archne_strings.xml');
     for (const [k, a, b] of [['call_video', 'Panggilan video masuk', 'Incoming video call'], ['call_voice', 'Panggilan suara masuk', 'Incoming voice call'], ['missed_video', 'Panggilan video tak terjawab', 'Missed video call'], ['missed_voice', 'Panggilan suara tak terjawab', 'Missed voice call']]) assert(xid.includes('name="archne_' + k + '">' + a + '<') && xen.includes('name="archne_' + k + '">' + b + '<'), 'teks notifikasi ' + k); }
   assert(/o\.optBoolean\("video", false\)/.test(svc));
   // kurung seimbang di Java yang diubah (pengaman kasar karena javac tidak ada di sini)
@@ -163,7 +160,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     const body = src.replace(/"(?:\\.|[^"\\\n])*"/g, '""').replace(/'(?:\\.|[^'\\\n])'/g, "''").replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); // string dulu, baru komentar ("http://" di dalam string bukan komentar)
     for (const [o, c] of [['{', '}'], ['(', ')']]) assert.strictEqual(body.split(o).length, body.split(c).length, n + ': ' + o + c + ' seimbang');
   }
-  ok('cangkang Android: delegasi kamera, izin, plugin 1.1.0, teks notifikasi, kontrak Java');
+  ok('cangkang Android: delegasi kamera, izin, teks notifikasi, kontrak Java');
 
   console.log('\ncallvidlog: ' + pass + ' OK');
 })().catch((e) => { console.error(e); process.exit(1); });

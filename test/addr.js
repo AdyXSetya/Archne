@@ -45,6 +45,9 @@ const online = (c, id) => c.getState().peers.some((p) => p.id === id && p.online
     await B.addPeer('127.0.0.1', A.port);
     await until(() => online(B, A.id) && online(A, B.id), 8000, 'A-B online');
   }
+  // Prasyarat diperiksa SEBELUM C menyambung apa pun: langkah berikutnya menyambung port mati dan 10 alamat tak terjangkau, yang di jaringan nyata
+  // (Windows) butuh beberapa detik, dan selama itu A sudah memperkenalkan B dan C. B dan C tidak pernah menyambung langsung; sisanya dibuktikan di bawah.
+  assert(!B.peers.has(C.id) && !C.peers.has(B.id), 'awalnya B dan C belum saling kenal');
   const r2 = await C.addPeers(`  127.0.0.1:${A.port}, 127.0.0.1:1;  bukan_alamat\n999.9.9.9 127.0.0.1:${A.port} `);
   assert.deepStrictEqual(r2.added, ['127.0.0.1:' + A.port], 'duplikat digabung, yang benar tersambung');
   assert.deepStrictEqual(r2.fail, ['127.0.0.1:1'], 'port mati dilaporkan gagal');
@@ -57,7 +60,6 @@ const online = (c, id) => c.getState().peers.some((p) => p.id === id && p.online
   ok('beberapa alamat sekaligus (koma/spasi/baris baru): yang benar tersambung, yang mati dan yang bukan alamat dilaporkan; maks 10');
 
   // ---------- pertukaran alamat: B dan C hanya mengenal A ----------
-  assert(!B.peers.has(C.id) && !C.peers.has(B.id), 'awalnya B dan C belum saling kenal');
   await until(() => online(B, C.id) && online(C, B.id), 12000, 'B menemukan C lewat A');
   ok('cukup tersambung ke satu peer (A): B dan C saling menemukan lewat pertukaran alamat');
 

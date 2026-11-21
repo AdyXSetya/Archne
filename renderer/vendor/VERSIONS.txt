@@ -1,0 +1,19 @@
+Berkas pihak ketiga di folder ini (disalin apa adanya dari paket resmi; JANGAN diedit manual).
+Format baris data:  <sha256>  <berkas>  <= <asal>.   Dicek oleh test/vendorintegrity.js.
+Diperbarui terakhir: 22 Nov 2026 (rencana 4.2).
+
+75873d04a6400bbbac093b3602caf06f44ed92ee032925e1f4f21c03eba05a4e  mqtt.min.js  <= npm mqtt@5.16.1, dist/mqtt.min.js
+1e06facbb3d7459b89769aa4247cd4b71263e6662e4da0c54763f3bf06f5893b  rnnoise-worklet.js  <= npm @sapphi-red/web-noise-suppressor@0.4.1, dist/rnnoise/workletProcessor.js
+8b60a2ab88fdae2d1a9f940249d0eb072f28ba8e796f7304347b4e07839c8853  rnnoise.wasm  <= npm @sapphi-red/web-noise-suppressor@0.4.1, dist/rnnoise.wasm
+378fd17c294db15ee4e818ba5ef072242a21c8ad7445b483f7f46d7dc4f2c253  rnnoise_simd.wasm  <= npm @sapphi-red/web-noise-suppressor@0.4.1, dist/rnnoise_simd.wasm
+
+Lisensi:
+- LICENSE-mqtt.txt                  MIT, MQTT.js (identik dengan LICENSE.md paket mqtt@5.16.1)
+- LICENSE-web-noise-suppressor.txt  MIT, @sapphi-red/web-noise-suppressor (pembungkus worklet; identik dengan LICENSE paket 0.4.1)
+- LICENSE-rnnoise.txt               BSD-3-Clause, xiph/rnnoise (https://github.com/xiph/rnnoise, berkas COPYING). Biner .wasm dibangun darinya;
+                                    BSD-3 mewajibkan notis ini ikut dalam distribusi biner.
+- LICENSE-rnnoise-wasm.txt          Apache-2.0, shiguredo/rnnoise-wasm (https://github.com/shiguredo/rnnoise-wasm), pembungkus WASM yang
+                                    disebut README paket web-noise-suppressor.
+
+Cara memperbarui: npm pack <paket>@<versi> (pilih rilis yang sudah >= 2 minggu), salin berkas dari tabel di atas, perbarui hash
+di sini, lalu jalankan node test/vendorintegrity.js dan node test/mqttvendor.js. Setelah mengganti RNNoise, dengarkan kualitas panggilan.
