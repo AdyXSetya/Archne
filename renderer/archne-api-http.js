@@ -133,6 +133,7 @@
   // Peramban dalam aplikasi (v0.25.1): hanya Electron. Sengaja undefined (bukan RPC): renderer memeriksa typeof === 'function'
   // dan, bila tidak ada, meneruskan tautan ke cangkang Android (InAppBrowser) atau membuka tab baru.
   api.webOpen = api.webNav = api.webBounds = api.webClose = api.webExternal = api.onWebState = undefined;
+  api.onScreenPick = api.screenPickDone = undefined; // pemilih layar Archne hanya di Electron (v0.32.0 C.2); peramban memakai pemilih bawaannya lewat getDisplayMedia
   api.onWs = () => {}; // jalur WebSocket cadangan hanya ada di Electron (proses utama); di HTTP tidak ada kejadian ws
 
   // Halaman (2a-6, banyak gambar di 2c, video di 3c-6 lewat opts.videos): gambar postingan di Android/peramban berupa File. Tiap File diunggah dulu ke <dataDir>/shared (sama dengan sendFile), berurutan

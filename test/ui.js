@@ -165,7 +165,7 @@ const base = (file, extra) => Object.assign({ id: ID, from: 'peer', to: 'public'
   const handled = new Set([...ipc.matchAll(/\b(?:h|ipcMain\.handle)\('(\w+)'/g)].map((m) => m[1]).concat([...ipcDx.matchAll(/^\s*on\('(\w+)'/gm)].map((m) => m[1]), [...ipcPg.matchAll(/^\s*on\('(\w+)'/gm)].map((m) => m[1])));
   for (const c of channels) assert(handled.has(c), 'preload.js memanggil saluran ' + c + ' yang tidak punya handler di archne-ipc.js');
   const events = [...preload.matchAll(/ipcRenderer\.on\('(\w+)'/g)].map((m) => m[1]);
-  const mainSrc = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  const mainSrc = fs.readFileSync(path.join(root, 'main.js'), 'utf8') + fs.readFileSync(path.join(root, 'src', 'archne-screenpick.js'), 'utf8'); // pengirim 'screenpick' ada di modul pemilih layar (v0.32.0 C)
   for (const e of events) assert(ipc.includes(`'${e}'`) || ipcDx.includes(`'${e}'`) || ipcPg.includes(`'${e}'`) || mainSrc.includes(`'${e}'`), 'tidak ada pengirim event ' + e);
   assert(/<script src="archne-filecard\.js"><\/script>/.test(html) && fs.existsSync(path.join(root, 'renderer', 'archne-filecard.js')));
   assert(/script-src 'self'/.test(html), 'CSP mengizinkan skrip dari berkas sendiri');

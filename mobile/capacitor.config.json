@@ -9,7 +9,7 @@
   "plugins": {
     "Nodejs": {
       "nodeDir": "nodejs",
-      "startMode": "auto"
+      "startMode": "manual"
     }
   },
   "backgroundColor": "#0E141B"

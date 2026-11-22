@@ -206,7 +206,9 @@ ok('api: placeholder, jamak, fallback id->en->kunci, bahasa tak dikenal -> en');
     assert.strictEqual(m.textContent, want, 'teks awal pembungkus mengikuti bahasa terakhir');
   }
   let w = await env(null, { lang: 'id' });
-  assert.deepStrictEqual(hasBg(w, 'start')[0].args, { port: 4321, token: 'tok', lang: 'id' }, 'start() membawa bahasa dari inti');
+  assert.deepStrictEqual(hasBg(w, 'start')[0].args, { port: 4321, token: 'tok', lang: 'id', dxout: '' }, 'start() membawa bahasa dari inti (dxout kosong bila inti tidak memberinya)');
+  const wd = await env(null, { lang: 'id', dxout: '/data/user/0/x/dxout' });
+  assert.strictEqual(hasBg(wd, 'start')[0].args.dxout, '/data/user/0/x/dxout', 'start() meneruskan dxout dari inti');
   assert.strictEqual(w.store['lc.lang'], 'id', 'bahasa dicatat');
   w = await env(null, {}); assert.deepStrictEqual(hasBg(w, 'start')[0].args.lang, 'en', 'inti tanpa lang (versi lama) = en');
   w = await env(null, { lang: 'en' });

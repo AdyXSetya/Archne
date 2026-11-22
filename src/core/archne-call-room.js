@@ -171,7 +171,9 @@ module.exports = {
   },
   // Siarkan status mik/deafen milikku ke semua kaki aktif di ruang (1-1 dan grup lewat jalur yang sama). Dipanggil UI setiap kali status berubah.
   // cam (opsional): true/false = kamera hidup/mati; undefined = tidak membawa kabar kamera (suara saja, atau peer lama).
-  callMedia(room, muted, deafened, cam) {
+  // scr (opsional, v0.32.0): true = kamera-slot ini berisi LAYAR yang dibagikan (hanya sah bersama cam=true), false = bukan layar; undefined = tidak berubah.
+  // Dibawa sebagai medan tambahan `s` di pesan st yang sama (bukan jenis pesan baru): peer v0.31 tidak memeriksa medan itu, jadi mengabaikannya tanpa galat.
+  callMedia(room, muted, deafened, cam, scr) {
     room = String(room);
     const legs = this._legs(room);
     if (!legs.length && !this._joins.has(room) && !this._vcRoom(room) && !this._pvRoom(room)) return false; // bukan ruangku: jangan simpan apa pun (tidak akan pernah dibersihkan)
@@ -183,10 +185,15 @@ module.exports = {
       if (this._chanCamList(room).length >= CALL_CAM_MAX) return 'full'; // penuh: tidak disimpan, tidak disiarkan
       vt = Date.now(); // urutan menyala (dibawa ke peserta lain untuk menentukan siapa yang lebih dulu bila dua orang menyala bersamaan)
     }
+    let sv; // niat layar: false bila kamera/layar dimatikan, true hanya bersama kamera-slot yang baru dinyalakan, selain itu tidak berubah
+    if (cv === false || scr === false) sv = false; else if (scr === true && cv === true) sv = true;
+    const wasScr = prev.scr === true, nowScr = sv === undefined ? wasScr && (cv === undefined || cv === true) : sv;
     const keep = cv === undefined ? (typeof prev.cam === 'boolean' ? { cam: prev.cam, vt: prev.vt } : {}) : cv ? { cam: true, vt } : { cam: false };
+    if (nowScr && keep.cam === true) keep.scr = true;
     this._callMy.set(room, Object.assign({ muted: mu, deafened: d }, keep));
     const kv = cv === undefined ? {} : { v: cv ? 1 : 0 };
     if (cv === true && vt) kv.vt = vt;
+    if (nowScr && keep.cam === true) kv.s = 1; else if (wasScr) kv.s = 0; // s=0 hanya dikirim untuk menutup layar yang tadinya dibagikan; selain itu pesan tidak berubah dari v0.31
     for (const l of legs) if (l.state === 'active') this._callQueue(l, Object.assign({ t: 'st', cid: l.cid, m: mu ? 1 : 0, d: d ? 1 : 0 }, kv));
     return true;
   },
@@ -220,7 +227,7 @@ module.exports = {
       if (jn.seen.size >= jn.members.length && this._legs(c.room).every((x) => x.state === 'active')) { clearTimeout(jn.timer); this._joins.delete(c.room); }
     }
     const my = this._callMy.get(c.room); // status mik/deafen milikku yang sudah berlaku: kirim ke kaki baru ini (anggota baru / perubahan sebelum aktif). Status bawaan tidak perlu dikirim.
-    if (my && (my.muted || my.deafened || typeof my.cam === 'boolean')) this._callQueue(c, Object.assign({ t: 'st', cid: c.cid, m: my.muted || my.deafened ? 1 : 0, d: my.deafened ? 1 : 0 }, typeof my.cam === 'boolean' ? Object.assign({ v: my.cam ? 1 : 0 }, my.cam && my.vt ? { vt: my.vt } : {}) : {}));
+    if (my && (my.muted || my.deafened || typeof my.cam === 'boolean')) this._callQueue(c, Object.assign({ t: 'st', cid: c.cid, m: my.muted || my.deafened ? 1 : 0, d: my.deafened ? 1 : 0 }, typeof my.cam === 'boolean' ? Object.assign({ v: my.cam ? 1 : 0 }, my.cam && my.vt ? { vt: my.vt } : {}, my.cam && my.scr ? { s: 1 } : {}) : {}));
     this.emit('call', { ev: 'state', cid: c.cid, peer: c.peer, state: 'active' });
     if (c.stEarly) { const e = c.stEarly; c.stEarly = null; this._callSt(c, e); } // kabar status yang tiba sebelum aktif (mis. kamera yang sudah hidup)
     return true;

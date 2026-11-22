@@ -11,7 +11,7 @@ Chat, call, and share files directly between devices.
 Your identity is just a key pair that lives on your own device.
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Version](https://img.shields.io/badge/version-0.31.0-blue)
+![Version](https://img.shields.io/badge/version-0.32.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Android%20%C2%B7%20Browser-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933)
@@ -36,11 +36,11 @@ Archne takes the opposite approach. Every device is an equal **peer**. Devices f
 
 > **Status: beta.** The core features work and are used day to day, but some parts may still change. Found a bug? Please open an issue.
 
-### 🆕 New in 0.31.0
-- **Android rebuilt on Capacitor 8** with the **Node 24** runtime. Cordova is gone.
-- **16 KB page size support** for newer Android devices (checked with `zipalign`).
-- **Desktop moved to Electron 45** (electron-builder 26).
-- Android: better call notifications (Answer / Decline, over the lock screen), edge-to-edge layout, back-button handling, and Pages export/import.
+### 🆕 New in 0.32.0
+- **Screen sharing in calls**, from Windows and from Android. Windows can add system sound (off by default); Android shares the sound of media apps.
+- **Watch a shared screen on your phone** in full screen, with pinch-to-zoom.
+- **Page backup** now includes comments and reactions.
+- Fixes: Pages feed stopped loading on scroll, Android force close and endless loading when reopening the app, calls connect faster, and TURN is more reliable.
 
 > **Updating from 0.30.0?** This is a big internal change. Old app data is **not** carried over. Android only installs the new APK over the old one if both are signed with the same key; otherwise uninstall first. Full details in the [changelog](CHANGELOG.md).
 
@@ -62,6 +62,7 @@ Archne takes the opposite approach. Every device is an equal **peer**. Devices f
 - **Voice channels** for groups (lockable per member) and **public voice channels** protected by a 6-digit PIN.
 - **Noise suppression** powered by RNNoise, running locally on your device.
 - Call history and missed-call indicators.
+- **Screen sharing** (Windows and Android) with optional system sound. One person shares at a time. Screen sharing shows everything on your screen, including notifications and other windows, so use it only with people you trust.
 
 ### 📎 Files and media
 - **Send files** directly between devices: losslessly compressed and encrypted before they leave your device.
@@ -74,7 +75,7 @@ Pages are your own post space, like a social profile that lives on your device.
 - **Threaded comments**, replies, and **reactions** on comments.
 - Delete your own comments on other people's pages.
 - New comments and reactions appear **instantly**, no refresh needed.
-- **Backup and restore** your whole page to a single `.archpg` file.
+- **Backup and restore** your whole page, with comments and reactions, to a single `.archpg` file.
 - Per-post privacy controls (friends only, disable downloads).
 
 ### 🌐 Cross-network
@@ -260,7 +261,6 @@ archne/
 │   └── vendor/             Third-party libraries (MQTT, RNNoise)
 ├── mobile/                 Android shell (Capacitor 8 + Node 24)
 ├── scripts/                Setup and build scripts
-├── docs/                   Planning notes and test baseline
 ├── CHANGELOG.md            Release history
 └── test/                   Test suite
 ```
@@ -269,7 +269,7 @@ archne/
 
 ### Adding a language or new text
 
-Add every new text key to both `renderer/i18n/archne-en.js` and `renderer/i18n/archne-id.js`. Background and conventions live in [`docs/PLAN-i18n.md`](docs/PLAN-i18n.md).
+Add every new text key to both `renderer/i18n/archne-en.js` and `renderer/i18n/archne-id.js`. Keep the key names and tone consistent with the existing entries.
 
 ---
 

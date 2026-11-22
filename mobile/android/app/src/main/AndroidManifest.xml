@@ -37,7 +37,7 @@
         </provider>
 
         <!-- Layanan latar depan (chat tetap tersambung, notifikasi) -->
-        <service android:name="com.xyraori.archne.ArchneService" android:exported="false" android:foregroundServiceType="dataSync|microphone" />
+        <service android:name="com.xyraori.archne.ArchneService" android:exported="false" android:foregroundServiceType="dataSync|microphone|mediaProjection" />
         <receiver android:name="com.xyraori.archne.ArchneReceiver" android:exported="false" />
     </application>
 
@@ -58,6 +58,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Berbagi layar dari HP (ArchneScreen): MediaProjection + AudioPlaybackCapture butuh layanan latar bertipe mediaProjection -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />

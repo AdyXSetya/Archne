@@ -12,7 +12,7 @@ const J = (f) => ['mobile', 'android', 'app', 'src', 'main', 'java', 'com', 'xyr
 const nojc = (s) => s.replace(/"(?:\\.|[^"\\\n])*"|\/\*[\s\S]*?\*\/|\/\/.*$/gm, (m) => (m[0] === '"' ? m : ''));
 
 const wrapper = rd('mobile', 'shell', 'index.html');
-const java = { ArchneAudio: rd(...J('ArchneAudio.java')), ArchneDownloads: rd(...J('ArchneDownloads.java')), ArchneBackground: rd(...J('ArchneBackground.java')) };
+const java = { ArchneAudio: rd(...J('ArchneAudio.java')), ArchneDownloads: rd(...J('ArchneDownloads.java')), ArchneBackground: rd(...J('ArchneBackground.java')), ArchneScreen: rd(...J('ArchneScreen.java')) };
 const methods = (src) => new Set([...nojc(src).matchAll(/@PluginMethod\s+public void (\w+)\(PluginCall/g)].map((m) => m[1]));
 
 // 1. kontrak pembungkus -> Java
@@ -46,16 +46,18 @@ ok('Java tanpa referensi Cordova');
 
 // 3. manifest
 const mf = rd('mobile', 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
-const need = ['INTERNET', 'ACCESS_NETWORK_STATE', 'ACCESS_WIFI_STATE', 'CHANGE_WIFI_MULTICAST_STATE', 'RECORD_AUDIO', 'CAMERA', 'MODIFY_AUDIO_SETTINGS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC', 'FOREGROUND_SERVICE_MICROPHONE', 'WAKE_LOCK', 'POST_NOTIFICATIONS', 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', 'MANAGE_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'];
+const need = ['INTERNET', 'ACCESS_NETWORK_STATE', 'ACCESS_WIFI_STATE', 'CHANGE_WIFI_MULTICAST_STATE', 'RECORD_AUDIO', 'CAMERA', 'MODIFY_AUDIO_SETTINGS', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC', 'FOREGROUND_SERVICE_MICROPHONE', 'FOREGROUND_SERVICE_MEDIA_PROJECTION', 'WAKE_LOCK', 'POST_NOTIFICATIONS', 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', 'MANAGE_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE'];
 for (const p of need) assert(mf.includes('android.permission.' + p), 'manifest: ' + p);
-assert(/<service android:name="com\.xyraori\.archne\.ArchneService"[^>]*foregroundServiceType="dataSync\|microphone"/.test(mf), 'service');
+assert(/<service android:name="com\.xyraori\.archne\.ArchneService"[^>]*foregroundServiceType="dataSync\|microphone\|mediaProjection"/.test(mf), 'service');
 assert(/<receiver android:name="com\.xyraori\.archne\.ArchneReceiver"[^>]*exported="false"/.test(mf), 'receiver');
 assert(/usesCleartextTraffic="true"/.test(mf), 'cleartext');
 assert(/android:required="false"/.test(mf) && mf.includes('android.hardware.camera'), 'kamera opsional');
-ok('manifest: izin, service (dataSync|microphone), receiver, cleartext, kamera opsional');
+ok('manifest: izin, service (dataSync|microphone|mediaProjection), receiver, cleartext, kamera opsional');
 const fp = rd('mobile', 'android', 'app', 'src', 'main', 'res', 'xml', 'file_paths.xml');
 assert(/<files-path /.test(fp), 'file_paths: files-path untuk berkas unduhan'); ok('FileProvider mencakup getFilesDir()');
 assert(/ArchneService\.callMode/.test(java.ArchneAudio) && /static void callMode/.test(rd(...J('ArchneService.java')))); ok('ArchneAudio -> ArchneService.callMode ada');
+assert(/ArchneService\.screenMode/.test(java.ArchneScreen) && /static boolean screenMode/.test(rd(...J('ArchneService.java'))) && /FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION/.test(rd(...J('ArchneService.java')))); ok('ArchneScreen -> ArchneService.screenMode ada (tipe mediaProjection)');
+assert(/io\.github\.webrtc-sdk:android:/.test(rd('mobile', 'android', 'app', 'build.gradle')), 'dependensi libwebrtc'); ok('build.gradle memuat libwebrtc untuk ArchneScreen');
 
 // 4. galat e:<nama> punya terjemahan
 const W = /var W = (\{[\s\S]*?\n  \});\n  var lang/.exec(wrapper), dict = vm.runInNewContext('(' + W[1] + ')');
@@ -81,4 +83,17 @@ const gr = rd('mobile', 'android', 'app', 'build.gradle');
 assert(/abiFilters/.test(gr) && /archne\.abis/.test(gr) && /arm64-v8a/.test(gr) && /armeabi-v7a/.test(gr) && /x86_64/.test(gr), 'build.gradle: abiFilters bawaan semua ABI, bisa diganti lewat -Parchne.abis');
 assert(/useLegacyPackaging\s*=\s*true/.test(gr), 'build.gradle: library native dikompres di APK');
 ok('ukuran APK: semua ABI bawaan (bisa dibatasi), library native dikompres');
+// 8. mode tonton layar penuh (rencana 0.32.0 D.1a): wiring pembungkus -> plugin -> MainActivity
+assert(/d\.action === 'viewer'[^;]*nat\('ArchneBackground', 'viewer', \{ on: d\.on === true \}\)/.test(wrapper), 'pembungkus meneruskan aksi viewer');
+assert(/viewer\(\) \{[\s\S]*?\}/.test('') || /void viewer\(boolean on\)/.test(main), 'MainActivity.viewer(boolean)');
+assert(/ActivityInfo\.SCREEN_ORIENTATION_SENSOR_LANDSCAPE/.test(main), 'landscape dua arah mengikuti sensor');
+assert(/ActivityInfo\.SCREEN_ORIENTATION_UNSPECIFIED/.test(main), 'orientasi dipulihkan saat keluar');
+assert(!/SCREEN_ORIENTATION_LANDSCAPE\b/.test(main) && !/SCREEN_ORIENTATION_REVERSE_LANDSCAPE/.test(main), 'tidak mengunci satu arah landscape saja');
+assert(/c\.hide\(WindowInsetsCompat\.Type\.systemBars\(\)\)/.test(main) && /c\.show\(WindowInsetsCompat\.Type\.systemBars\(\)\)/.test(main), 'bilah sistem disembunyikan dan dimunculkan lagi');
+assert(/LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES/.test(main) && /LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT/.test(main), 'mode takik masuk dan pulih');
+assert(/viewerOn \? \(WindowInsetsCompat\.Type\.ime\(\) \| WindowInsetsCompat\.Type\.displayCutout\(\)\) : \(WindowInsetsCompat\.Type\.systemBars\(\)/.test(main), 'selama mode tonton jarak bilah dilepas; keyboard dan takik tetap diberi jarak (D.1d)');
+assert(/root\.setBackgroundColor\(on \? 0xFF000000 : 0xFF0E141B\)/.test(main), 'latar hitam selama mode tonton, pulih saat keluar (D.1d)');
+assert(/\(\(MainActivity\) getActivity\(\)\)\.viewer\(on\)/.test(nojc(java.ArchneBackground)), 'plugin memanggil MainActivity.viewer');
+ok('mode tonton layar penuh: landscape dua arah, bilah dan takik masuk-keluar, terhubung dari pembungkus');
+assert(/ARCHNE-PROBE getDisplayMedia/.test(wrapper), 'penanda spike A.3 ada'); ok('penanda spike getDisplayMedia (A.3) ada di pembungkus');
 console.log('mobileplugins: ' + pass + ' lulus');

@@ -206,6 +206,6 @@ $('pgmodal').addEventListener('keydown', (e) => {
   else if (e.target.dataset && e.target.dataset.pg === 'ctxt') { e.preventDefault(); pgCmtSend(e.target.dataset.id); }
   else if (e.target.dataset && e.target.dataset.pg === 'rtxt') { e.preventDefault(); pgCmtReplySend(e.target.dataset.id); }
 });
-$('pglist').addEventListener('scroll', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('pgtrack')) pgCarSync(t.parentNode); }, true); // scroll tidak menggelembung: tangkap di fase capture
+$('pgbody').addEventListener('scroll', (e) => { const t = e.target; if (t && t.classList && t.classList.contains('pgtrack')) pgCarSync(t.parentNode); }, true); // scroll tidak menggelembung: tangkap di fase capture
 $('pgbox').addEventListener('scroll', () => { const b = $('pgbox'), f = pgF; if (f && f.next && !f.busy && !f.err && b.scrollHeight - b.scrollTop - b.clientHeight < PG_NEAR) pgLoad(); });
 if (document.addEventListener) document.addEventListener('keydown', (e) => { if (pgId && e.key === 'Escape') { e.preventDefault(); pgClose(); } });

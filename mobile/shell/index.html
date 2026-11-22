@@ -23,9 +23,13 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
   // Jembatan Capacitor (v0.31.0). Plugin lokal (ArchneBackground/Audio/Downloads) dipanggil lewat nat(); bila belum terdaftar, janji ditolak dengan 'noplugin'.
   var CAP = window.Capacitor, plugs = {};
   function plug(n) { if (plugs[n] === undefined) { try { plugs[n] = (CAP && CAP.Plugins && CAP.Plugins[n]) || (CAP && CAP.registerPlugin ? CAP.registerPlugin(n) : null); } catch (x) { plugs[n] = null; } } return plugs[n]; }
+  // Capacitor 8: addListener/send/start tidak selalu mengembalikan Promise (galat nyata: "addListener(...).catch is not a function" menghentikan boot). Selalu bungkus.
+  function pr(f) { try { return Promise.resolve(f()); } catch (x) { return Promise.reject(x); } }
   function nat(n, m, a) { var p = plug(n); if (!p || typeof p[m] !== 'function') return Promise.reject('noplugin'); try { return Promise.resolve(p[m](a || {})); } catch (x) { return Promise.reject(x); } }
   function emsg(er) { return er && er.message != null ? String(er.message) : String(er == null ? '' : er); }
   var noop = function () {};
+  // Screen-share spike (0.32.0 plan, A.3): log to logcat whether this WebView has getDisplayMedia. View with: adb logcat | findstr ARCHNE-PROBE
+  try { var md = navigator.mediaDevices; console.log('ARCHNE-PROBE getDisplayMedia=' + (md && typeof md.getDisplayMedia === 'function' ? 'yes' : 'no') + ' ua=' + navigator.userAgent); } catch (x) { console.log('ARCHNE-PROBE error: ' + x); }
   // Bahasa halaman pembungkus (di luar iframe; i18n renderer tidak sampai ke sini). Sumber: bahasa aplikasi di Core, dikirim inti Node lewat 'ready'
   // (info.lang) dan lewat pesan 'lang' dari UI saat pengguna menggantinya. Disimpan di localStorage 'lc.lang' agar teks sebelum inti siap (Memulai..., galat)
   // memakai bahasa terakhir. Bawaan en. Kunci en dan id HARUS sama (dijaga test/i18n.js).
@@ -79,7 +83,35 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
     xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
   function tell(m) { try { frame.contentWindow.postMessage(m, origin); } catch (x) {} }
-  function tellCaps() { tell({ archne: 'native-caps', audio: true, pick: !!dxoutRoot }); }
+  var screenCap = false; // plugin ArchneScreen ada (berbagi layar dari HP); diisi initScreen()
+  function tellCaps() { tell({ archne: 'native-caps', audio: true, pick: !!dxoutRoot, screen: screenCap }); }
+  // Berbagi layar dari HP (v0.32.0 fase E). Layar + suara sistem ditangkap native dan sampai ke UI lewat PeerConnection loopback;
+  // halaman ini hanya meneruskan sinyalnya (offer/answer/ICE) antara iframe dan plugin. Kejadian native 'sig' -> UI { archne:'native-screen', t, ... }.
+  function initScreen() {
+    nat('ArchneScreen', 'caps').then(function (r) {
+      if (!(r && r.screen === true)) return;
+      screenCap = true;
+      var P = plug('ArchneScreen');
+      try {
+        var h = P.addListener('sig', function (e) {
+          if (!e || typeof e.t !== 'string') return;
+          tell({ archne: 'native-screen', t: e.t, sdp: typeof e.sdp === 'string' ? e.sdp : undefined, c: typeof e.c === 'string' ? e.c : undefined, mid: typeof e.mid === 'string' ? e.mid : undefined, ml: typeof e.ml === 'number' ? e.ml : undefined, w: e.w, h: e.h });
+        });
+        if (h && typeof h.catch === 'function') h.catch(noop);
+      } catch (x) {}
+      tellCaps();
+    }, noop);
+  }
+  // UI -> plugin: screen-start {audio} | screen-answer {sdp} | screen-ice {c,mid,ml} | screen-stop. Jawaban { native-reply, id, ok, res } (res = kode galat: denied | nosvc | busy | err:...).
+  function screenAsk(d) {
+    var reply = function (ok, res) { if (typeof d.id === 'number' && isFinite(d.id) && d.id > 0) tell({ archne: 'native-reply', id: d.id, ok: ok, res: res }); };
+    var done = function () { reply(true, ''); }, fail = function (er) { reply(false, emsg(er) || 'error'); };
+    if (d.action === 'screen-start') nat('ArchneScreen', 'start', { audio: d.audio === true }).then(function (r) { reply(true, r && r.audio === true ? 'audio' : ''); }, fail);
+    else if (d.action === 'screen-answer' && typeof d.sdp === 'string' && d.sdp.length < 200000) nat('ArchneScreen', 'answer', { sdp: d.sdp }).then(done, fail);
+    else if (d.action === 'screen-ice' && typeof d.c === 'string' && d.c.length < 2000) nat('ArchneScreen', 'ice', { c: d.c, mid: typeof d.mid === 'string' ? d.mid : '', ml: typeof d.ml === 'number' ? d.ml : 0 }).then(done, fail);
+    else if (d.action === 'screen-stop') nat('ArchneScreen', 'stop').then(done, fail);
+    else reply(false, 'bad');
+  }
   function tellApp(state) { tell({ archne: 'native-app', state: state }); }
   var pipNow = null;
   function pipEvt(on) { if (pipNow === on) return; pipNow = on; tell({ archne: 'native-app', state: 'pip', on: on }); }
@@ -90,12 +122,13 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
     ready = true;
     setLang(info.lang);
     // layanan latar depan (agar tetap tersambung saat aplikasi di belakang) + notifikasi pesan masuk
-    nat('ArchneBackground', 'start', { port: info.port, token: info.token, lang: lang }).catch(noop);
+    nat('ArchneBackground', 'start', { port: info.port, token: info.token, lang: lang, dxout: typeof info.dxout === 'string' ? info.dxout : '' }).catch(noop);
+    initScreen();
     // Minta pengecualian penghematan baterai (sekali saja; jeda agar tidak bertumpuk dengan dialog izin notifikasi Android 13+).
     setTimeout(function () { nat('ArchneBackground', 'batteryAsk', { manual: false }).catch(noop); }, 5000);
     origin = 'http://127.0.0.1:' + info.port;
     dxoutRoot = typeof info.dxout === 'string' ? info.dxout : null; // folder salinan sementara Kirim Langsung (dihapus inti Node)
-    frame.onload = function () { bootEl.style.display = 'none'; msg.style.display = 'none'; frame.style.display = 'block'; tellCaps(); setTimeout(openTappedChat, 900); };
+    frame.onload = function () { bootEl.style.display = 'none'; msg.style.display = 'none'; frame.style.display = 'block'; tellCaps(); nat('ArchneBackground', 'viewer', { on: false }).catch(noop); setTimeout(openTappedChat, 900); }; // UI (re)dimuat = tidak ada mode tonton: orientasi dan bilah dipulihkan (D.1e)
     frame.src = origin + '/s/' + info.token + '/'; // sesi lewat jalur URL: iframe lintas situs tidak bisa memakai cookie di WebView
   }
   // Berkas selesai diterima: salin ke folder Download publik lewat plugin lokal ArchneDownloads (MediaStore di Android 10+).
@@ -108,22 +141,28 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
       function (er) { tell({ archne: 'native-error', err: T('saveFail', { e: nerr(er) || T('unknown') }) }); });
   }
 
+  function startNode(Node) { try { pr(function () { return Node.start({}); }).catch(function (er) { show(T('nodeFail', { e: emsg(er) })); }); } catch (x) { show(T('nodeFail', { e: emsg(x) })); } }
+
   function boot() {
     var Node = plug('Nodejs');
     if (!Node) { show(T('nodeFail', { e: T('noPlugin') })); return; }
     // Nama event aplikasi berawalan "archne:" agar tidak bentrok dengan event bawaan plugin (ready/message).
-    Node.addListener('message', function (e) {
+    pr(function () { return Node.addListener('message', function (e) {
       var n = e && e.eventName, a = (e && e.args) || [];
       if (n === 'archne:ready') onReady(a[0]);
       else if (n === 'archne:saved') onSaved(a[0]);
       else if (n === 'archne:arcpick') arcPick();
       else if (n === 'archne:fatal') show(T('fatal', { m: a[0] }));
-    }).catch(function (er) { show(T('nodeFail', { e: emsg(er) })); });
-    // Node dimulai otomatis (startMode auto). Pesan 'ready' yang terkirim sebelum pendengar terpasang hilang, juga saat aplikasi dibuka
-    // ulang selagi inti Node masih hidup: karena itu halaman menanyakan port dan token tiap detik sampai dijawab.
+    }); }).catch(function (er) { show(T('nodeFail', { e: emsg(er) })); });
+    // Node dimulai manual (startMode manual), sekali per proses. Buka ulang selagi layanan latar depan masih hidup: inti Node sudah jalan dan plugin
+    // Node yang baru tidak pernah 'ready' (Node.send ditolak, memulai Node kedua juga tidak mungkin), jadi port dan token diminta dari plugin lokal.
+    nat('ArchneBackground', 'info').then(function (r) {
+      if (r && r.port > 0 && r.token) onReady(r); else startNode(Node);
+    }, function () { startNode(Node); });
+    // Pesan 'ready' yang terkirim sebelum pendengar terpasang hilang: halaman menanyakan port dan token tiap detik sampai dijawab.
     var hello = setInterval(function () {
       if (ready) { clearInterval(hello); return; }
-      try { Node.send({ eventName: 'archne:hello', args: ['hi'] }).catch(noop); } catch (x) {}
+      pr(function () { return Node.send({ eventName: 'archne:hello', args: ['hi'] }); }).catch(noop);
     }, 1000);
     setTimeout(function () { if (!ready) show(T('noReply')); }, 25000);
     var A = plug('App');
@@ -131,24 +170,24 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
       // Aplikasi ke latar belakang / kembali: UI diberi tahu (Android memutus kamera di latar belakang, jadi kamera channel dimatikan sebelum membeku).
       // Masuk Picture-in-Picture juga memicu pause, tetapi aplikasi masih tampil (jendela kecil): jangan dilaporkan ke latar belakang.
       // Jadi 'background' dikirim setelah jeda singkat, dan hanya bila PiP tidak aktif.
-      A.addListener('pause', function () {
+      pr(function () { return A.addListener('pause', function () {
         paused = true;
         setTimeout(function () {
           if (!paused) return;
           nat('ArchneBackground', 'pipState').then(function (r) { if (!(r && r.on === true)) tellApp('background'); }, function () { tellApp('background'); });
         }, 400);
-      }).catch(noop);
+      }); }).catch(noop);
       // Tombol Kembali perangkat (mendengarkan peristiwa ini mematikan perilaku bawaan, jadi diatur di sini): UI dulu (tutup dialog, kecilkan panggilan),
       // lalu riwayat (chat -> daftar, penampil gambar; riwayat iframe ikut riwayat halaman ini), terakhir aplikasi disembunyikan, tidak ditutup (layanan latar tetap hidup).
-      A.addListener('backButton', function (ev) {
+      pr(function () { return A.addListener('backButton', function (ev) {
         var can = !!(ev && ev.canGoBack);
         askBack(function (used) {
           if (used) return;
           if (can) { try { window.history.back(); } catch (x) {} return; }
-          if (typeof A.minimizeApp === 'function') A.minimizeApp().catch(noop); else if (typeof A.exitApp === 'function') A.exitApp().catch(noop);
+          if (typeof A.minimizeApp === 'function') pr(function () { return A.minimizeApp(); }).catch(noop); else if (typeof A.exitApp === 'function') pr(function () { return A.exitApp(); }).catch(noop);
         });
-      }).catch(noop);
-      A.addListener('resume', function () { paused = false; setTimeout(openTappedChat, 300); tellApp('foreground'); }).catch(noop);
+      }); }).catch(noop);
+      pr(function () { return A.addListener('resume', function () { paused = false; setTimeout(openTappedChat, 300); tellApp('foreground'); }); }).catch(noop);
     }
     // Kabar PiP lewat dua jalur (listener plugin dan kejadian window dari MainActivity); pipEvt membuang kabar ganda.
     // Jendela PiP ditutup TIDAK dianggap latar belakang: kamera dibiarkan (Android yang menentukan).
@@ -217,7 +256,7 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
   }
   // Impor arsip Halaman: Node meminta pemilih berkas sistem (satu berkas); jalurnya (asli atau salinan sementara) dikirim balik. Batal / gagal = jalur kosong.
   function arcPick() {
-    var back = function (p) { try { plug('Nodejs').send({ eventName: 'archne:arcpicked', args: [{ path: p }] }).catch(noop); } catch (x) {} };
+    var back = function (p) { try { pr(function () { return plug('Nodejs').send({ eventName: 'archne:arcpicked', args: [{ path: p }] }); }).catch(noop); } catch (x) {} };
     if (!dxoutRoot) { back(''); return; }
     nat('ArchneDownloads', 'pick', { root: dxoutRoot, job: 'arcimp', multiple: false }).then(
       function (r) { var l = r && r.paths; back(Array.isArray(l) && typeof l[0] === 'string' ? l[0] : ''); },
@@ -241,8 +280,10 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
     if (d && d.archne === 'answer-done') { stopAnswer(); return; }
     if (d && d.archne === 'native' && d.action === 'back-result') { backResult(d); return; }
     if (d && d.archne === 'native' && d.action === 'weburl') { openWeb(d); return; }
+    if (d && d.archne === 'native' && d.action === 'viewer') { nat('ArchneBackground', 'viewer', { on: d.on === true }).catch(noop); return; } // mode tonton layar penuh (landscape + bilah tersembunyi)
     if (d && d.archne === 'native' && d.action === 'pip') { nat('ArchneBackground', 'pip', { on: d.on === true }).catch(noop); return; } // siaga Picture-in-Picture (panggilan video aktif)
     if (d && d.archne === 'native' && d.action === 'dxpick') { dxPick(d); return; }
+    if (d && d.archne === 'native' && typeof d.action === 'string' && d.action.indexOf('screen-') === 0) { screenAsk(d); return; }
     if (d && d.archne === 'native' && AUDIO_ACT.hasOwnProperty(d.action)) { audioAsk(d); return; }
     if (d && d.archne === 'native' && d.action === 'battery') { // tombol "Jaga tetap aktif" di menu UI
       var say = function (t) { tell({ archne: 'native-info', text: t }); };

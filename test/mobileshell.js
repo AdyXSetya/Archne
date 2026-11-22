@@ -10,7 +10,8 @@ const same = (a, b, m) => assert.strictEqual(JSON.stringify(a), JSON.stringify(b
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- bagian 1: halaman pembungkus ----------
-function loadWrapper() {
+function loadWrapper(infoRet0) {
+  const infoRet = { v: infoRet0 };
   const html = fs.readFileSync(shell('index.html'), 'utf8');
   const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
   const src = scripts[scripts.length - 1];
@@ -20,10 +21,11 @@ function loadWrapper() {
   const frame = { style: {}, contentWindow: frameWin, src: '' };
   const msg = { style: {}, textContent: '' };
   const plugins = {
-    Nodejs: { addListener: async (n, f) => { listeners[n] = f; }, send: async (o) => { sent.push(o); } },
-    App: { addListener: async (n, f) => { listeners['app:' + n] = f; }, minimizeApp: async () => { calls.push(['App.minimizeApp']); }, exitApp: async () => { calls.push(['App.exitApp']); } },
+    // Capacitor 8 sungguhan: addListener/send/start di plugin Node TIDAK mengembalikan Promise (galat nyata di HP: "addListener(...).catch is not a function")
+    Nodejs: { addListener: (n, f) => { listeners[n] = f; return { remove() {} }; }, send: (o) => { sent.push(o); }, start: (o) => { calls.push(['Nodejs.start', o]); } },
+    App: { addListener: (n, f) => { listeners['app:' + n] = f; return { remove() {} }; }, minimizeApp: () => { calls.push(['App.minimizeApp']); }, exitApp: () => { calls.push(['App.exitApp']); } },
     Browser: { open: async (o) => { calls.push(['Browser.open', o]); } },
-    ArchneBackground: new Proxy({}, { get: (_, m) => async (a, f) => { calls.push(['ArchneBackground.' + m, a]); if (m === 'addListener') { listeners['bg:' + a] = f; return {}; } return m === 'takeChat' ? { key: 'k1' } : m === 'batteryAsk' ? { value: 'ok' } : m === 'pipState' ? { on: pipOn.v } : {}; } }),
+    ArchneBackground: new Proxy({}, { get: (_, m) => async (a, f) => { calls.push(['ArchneBackground.' + m, a]); if (m === 'addListener') { listeners['bg:' + a] = f; return {}; } return m === 'info' ? (infoRet.v || { port: 0 }) : m === 'takeChat' ? { key: 'k1' } : m === 'batteryAsk' ? { value: 'ok' } : m === 'pipState' ? { on: pipOn.v } : {}; } }),
     ArchneDownloads: new Proxy({}, { get: (_, m) => async (a) => { calls.push(['ArchneDownloads.' + m, a]); if (m === 'save') return { name: 'x (1).png' }; if (m === 'access') return { value: 'ok' }; if (m === 'pick') return { paths: ['/data/a', 7] }; return {}; } }),
   };
   const winListeners = [];
@@ -49,6 +51,18 @@ const runTimersOnce = async (w) => { const t = w.timers.splice(0); for (const x 
 
 (async () => {
   {
+    // buka ulang selagi layanan latar depan dan inti Node masih hidup: plugin Node baru tidak pernah 'ready' (send ditolak),
+    // jadi port/token diambil dari ArchneBackground.info; Node tidak dimulai lagi dan iframe langsung dimuat
+    const w = loadWrapper({ port: 6001, token: 'live', lang: 'id', dxout: '/data/dx2' });
+    await flush(); await flush();
+    assert.strictEqual(w.frame.src, 'http://127.0.0.1:6001/s/live/'); ok('buka ulang: iframe dimuat dari info layanan, tanpa menunggu hello');
+    assert.strictEqual(w.calls.filter((c) => c[0] === 'Nodejs.start').length, 0); ok('buka ulang: Node tidak dimulai kedua kali');
+    same(w.calls.find((c) => c[0] === 'ArchneBackground.start')[1], { port: 6001, token: 'live', lang: 'id', dxout: '/data/dx2' }); ok('buka ulang: layanan latar diperbarui dengan data yang sama');
+    w.intervals[0].f(); await flush(); assert.strictEqual(w.sent.length, 0); ok('buka ulang: tidak ada hello yang menggantung');
+    const w2 = loadWrapper({ port: 0 }); await flush(); await flush();
+    assert.strictEqual(w2.calls.filter((c) => c[0] === 'Nodejs.start').length, 1); assert.strictEqual(w2.frame.src, ''); ok('info port 0 -> mulai Node, tunggu ready');
+  }
+  {
     const w = loadWrapper();
     // kamus bahasa: kunci en == id
     const W = /var W = (\{[\s\S]*?\n  \});\n  var lang/.exec(w.html);
@@ -64,9 +78,11 @@ const runTimersOnce = async (w) => { const t = w.timers.splice(0); for (const x 
     w.listeners.message({ eventName: 'archne:ready', args: [{ port: 5555, token: 'tok', dxout: '/data/dx', lang: 'id' }] }); await flush();
     assert.strictEqual(w.frame.src, 'http://127.0.0.1:5555/s/tok/'); ok('archne:ready memuat iframe /s/<token>/');
     const bg = w.calls.find((c) => c[0] === 'ArchneBackground.start');
-    same(bg[1], { port: 5555, token: 'tok', lang: 'id' }); ok('ArchneBackground.start dipanggil dengan port, token, bahasa');
+    same(bg[1], { port: 5555, token: 'tok', lang: 'id', dxout: '/data/dx' }); ok('ArchneBackground.start dipanggil dengan port, token, bahasa, dxout');
     assert.strictEqual(w.ls['lc.lang'], 'id'); ok('bahasa disimpan di localStorage');
     w.intervals[0].f(); assert.strictEqual(w.sent.length, 1, 'tidak ada hello lagi setelah ready'); ok('hello berhenti setelah ready');
+    // Node dimulai manual, sekali, hanya bila layanan latar depan belum punya port/token
+    assert(w.calls.some((c) => c[0] === 'ArchneBackground.info'), 'info ditanyakan'); assert.strictEqual(w.calls.filter((c) => c[0] === 'Nodejs.start').length, 1); ok('boot dingin: info kosong -> Node.start sekali');
     // pesan dari iframe: sumber/origin salah ditolak
     const n0 = w.calls.length;
     w.fromFrame({ archne: 'native', action: 'weburl', url: 'https://example.com/' }, 'http://evil', w.frameWin);

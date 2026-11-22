@@ -3,7 +3,7 @@
 const assert = require('assert');
 const fs = require('fs'), path = require('path');
 const { ENTRIES_MAX, MANIFEST_MAX, FORMAT, MAGIC, FOOT_MAGIC } = require('../src/archne-pagearc');
-const { CMT_ENTRY_MAX } = require('../src/archne-pageexport');
+const { CMT_ENTRY_MAX, RX_ENTRY_MAX } = require('../src/archne-pageexport');
 const { POSTS_MAX, POST_MAX } = require('../src/archne-pageimport');
 const { CMT_STORE_MAX, CMT_RM_MAX } = require('../src/archne-pagecmt');
 const { MEDIA_MAX, FILES_MAX, VIDEOS_MAX, PAGE_FILE_MAX, PAGE_MEDIA_MAX, PAGE_VIDEO_MAX } = require('../src/archne-pagestore');
@@ -25,6 +25,7 @@ has(MiB(MANIFEST_MAX), 'ukuran manifest');
 has(MiB(POST_MAX), 'JSON satu postingan');
 has(id(CMT_STORE_MAX) + ' komentar + ' + id(CMT_RM_MAX) + ' nisan', 'komentar per arsip');
 has(MiB(CMT_ENTRY_MAX), 'entri komentar');
+has(MiB(RX_ENTRY_MAX), 'entri reaksi');
 has(MAGIC.toString() + '` ... `' + FOOT_MAGIC.toString(), 'magic');
 has('meta `fmt: 1`', 'versi meta'); assert.strictEqual(FORMAT, 1);
 console.log('pagearcdoc ok');

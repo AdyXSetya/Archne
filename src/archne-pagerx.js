@@ -15,6 +15,38 @@ const { ek } = require('./core/archne-ecode'); // i18n (E7)
 const HEX16 = /^[0-9a-f]{16}$/;
 const key = (postId) => postId + postId;
 
+// 5h: ekspor / impor arsip. dumpMap: salinan register (untuk kunci yang lolos has(k)); mergeMap: gabung register dari arsip (TIDAK dipercaya; hanya dipanggil bila pemilik arsip = pemilik store).
+// Aturan sama dengan applyRemote: register terbaru menang (ts, lalu emoji), emoji kanonis, batas 256 orang per sasaran, total 5000 (prune). Register arsip yang kalah / sama tidak mengubah apa pun, dan tidak pernah mencabut reaksi yang ada.
+// -> { added, updated, same, stale, bad, orphan, full }. opts.has(k): sasaran yang boleh ikut (lainnya orphan). opts.dry: hanya hitung.
+function dumpMap(map, has) {
+  const out = {};
+  for (const k of Object.keys(map)) if (has(k)) { out[k] = {}; for (const by of Object.keys(map[k])) out[k][by] = { e: map[k][by].e, ts: map[k][by].ts }; }
+  return out;
+}
+function mergeMap(map, raw, opts) {
+  opts = opts || {};
+  const ok = typeof opts.has === 'function' ? opts.has : () => true;
+  const r = { added: 0, updated: 0, same: 0, stale: 0, bad: 0, orphan: 0, full: 0 };
+  const src = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  const work = opts.dry ? JSON.parse(JSON.stringify(map)) : map;
+  for (const k of Object.keys(src)) {
+    const row = src[k];
+    if (!/^[0-9a-f]{32}$/.test(k) || !row || typeof row !== 'object' || Array.isArray(row)) { r.bad++; continue; }
+    if (!ok(k)) { r.orphan += Object.keys(row).length; continue; }
+    for (const by of Object.keys(row)) {
+      const rec = row[by], cur = work[k] && work[k][by];
+      const em = rec && typeof rec === 'object' && typeof rec.e === 'string' ? (rec.e === '' ? '' : RX.cleanEmoji(rec.e)) : null;
+      if (!HEX16.test(by) || em === null || !Number.isSafeInteger(rec.ts) || rec.ts < 0) { r.bad++; continue; }
+      if (cur && cur.e === em && cur.ts === rec.ts) { r.same++; continue; }
+      if (!cur && em === '') { r.same++; continue; } // tombstone tanpa lawan: tidak ada yang perlu dicatat
+      const st = RX.applyRemote(work, by, { m: k, e: em, ts: rec.ts }, {});
+      if (st === 'applied') { if (cur) r.updated++; else r.added++; } else if (st === 'stale') r.stale++; else r.full++;
+    }
+  }
+  if (!opts.dry) RX.prune(map);
+  return r;
+}
+
 class PageRx {
   constructor(file, write) {
     this.file = file;
@@ -47,6 +79,14 @@ class PageRx {
   owner(postId, me) {
     const k = key(postId), s = RX.summary(this.map, k, me);
     return { rx: s.map((x) => ({ e: x.e, n: x.n })), mine: RX.mineOf(this.map, k, me), who: s.map((x) => ({ e: x.e, by: x.by.slice() })) };
+  }
+  // 5h: salinan / penggabungan untuk arsip. Kunci sasaran = id + id; has(postId) memilih postingan yang ikut.
+  dump(has) { return dumpMap(this.map, (k) => k.slice(0, 16) === k.slice(16) && has(k.slice(0, 16))); }
+  merge(raw, opts) {
+    opts = opts || {}; const ok = typeof opts.has === 'function' ? opts.has : () => true;
+    const r = mergeMap(this.map, raw, { dry: opts.dry, has: (k) => k.slice(0, 16) === k.slice(16) && ok(k.slice(0, 16)) });
+    if (!opts.dry && (r.added || r.updated)) this._save();
+    return r;
   }
   // Pembuangan: satu postingan dihapus; atau semua yang postingannya tidak lolos has(id). Menulis hanya bila ada yang berubah.
   drop(postId) { if (this.map[key(postId)]) { RX.dropMsg(this.map, key(postId)); this._save(); } }
@@ -100,6 +140,14 @@ class PageCmtRx {
       if (v.rx.length || v.mine) out[cid] = v;
     }
     return out;
+  }
+  // 5h: salinan / penggabungan untuk arsip. Kunci sasaran = postId + cid; has(postId, cid) memilih komentar yang ikut.
+  dump(has) { return dumpMap(this.map, (k) => has(k.slice(0, 16), k.slice(16))); }
+  merge(raw, opts) {
+    opts = opts || {}; const ok = typeof opts.has === 'function' ? opts.has : () => true;
+    const r = mergeMap(this.map, raw, { dry: opts.dry, has: (k) => ok(k.slice(0, 16), k.slice(16)) });
+    if (!opts.dry && (r.added || r.updated)) this._save();
+    return r;
   }
   drop(postId, cid) { const k = ckey(postId, cid); if (this.map[k]) { RX.dropMsg(this.map, k); this._save(); } }
   dropPost(postId) { let n = 0; for (const k of Object.keys(this.map)) if (k.slice(0, 16) === postId) { RX.dropMsg(this.map, k); n++; } if (n) this._save(); return n; }

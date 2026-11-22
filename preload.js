@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld('api', {
   callInviteAccept: (room) => ipcRenderer.invoke('callInviteAccept', room),
   callInviteDecline: (room) => ipcRenderer.invoke('callInviteDecline', room),
   callLeg: (room, peerId, sdp) => ipcRenderer.invoke('callLeg', room, peerId, sdp),
-  callMedia: (room, muted, deafened, cam) => ipcRenderer.invoke('callMedia', room, muted, deafened, cam),
+  callMedia: (room, muted, deafened, cam, scr) => ipcRenderer.invoke('callMedia', room, muted, deafened, cam, scr),
   callLeave: (room) => ipcRenderer.invoke('callLeave', room),
   clearCalls: (peerId) => ipcRenderer.invoke('clearCalls', peerId),
   // channel voice grup
@@ -116,6 +116,9 @@ contextBridge.exposeInMainWorld('api', {
   webClose: () => ipcRenderer.invoke('webClose'),
   webExternal: (url) => ipcRenderer.invoke('webExternal', url),
   onWebState: (cb) => ipcRenderer.on('webstate', (_e, st) => cb(st)),
+  // berbagi layar (v0.32.0 C.4): proses utama mengirim daftar layar/jendela, renderer menjawab dengan id pilihan (null = batal)
+  onScreenPick: (cb) => ipcRenderer.on('screenpick', (_e, p) => cb(p)),
+  screenPickDone: (rid, id, audio) => ipcRenderer.invoke('screenPickDone', rid, id, audio === true),
   // Kirim Langsung (LAN)
   dxState: () => ipcRenderer.invoke('dxState'),
   dxPick: (kind) => ipcRenderer.invoke('dxPick', kind),

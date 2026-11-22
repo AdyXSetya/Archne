@@ -169,7 +169,7 @@ const flush = () => new Promise((r) => setImmediate(r));
   const created = [];
   const localS = { id: 'L' }, remoteS = { id: 'R' };
   let hasRemote = false;
-  const callCtl = { localVideo: () => localS, remoteVideo: (k) => (hasRemote && k === 'PEER' ? remoteS : null) };
+  const callCtl = { remoteScreen: () => false, localVideo: () => localS, remoteVideo: (k) => (hasRemote && k === 'PEER' ? remoteS : null) };
   const sandbox = new Function('$', 'document', 'callCtl', 'LC', code + '\nreturn { mountVideos, vidEls };');
   const { mountVideos, vidEls } = sandbox(() => root, { createElement: () => { const e = mkVideo(); created.push(e); return e; } }, callCtl, LC);
   mountVideos({ video: true });

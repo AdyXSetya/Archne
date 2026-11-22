@@ -84,7 +84,7 @@ const leg = (peer, name, state) => ({ cid: 'x' + peer, peer, name, state: state 
     const doc = { getElementById: (id) => els[id] || (els[id] = mkEl(id)), querySelectorAll: (sel) => (sel === '#list .cbk' ? [cbkBtn] : []), activeElement: null, querySelector: () => null,
       body: { classList: { add: (c) => bodyCls.add(c), remove: (c) => bodyCls.delete(c), contains: (c) => bodyCls.has(c) } } };
     const track = { enabled: true, stop() {} };
-    const win = { api, RTCPeerConnection: PC, LanCall: LC, navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) } } };
+    const win = { api, addEventListener: () => {}, RTCPeerConnection: PC, LanCall: LC, navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) } } };
     const ctx = { window: win, document: doc, CSS: { escape: (s) => s }, FileCard: require('../renderer/archne-filecard'), Avatar: require('../renderer/archne-avatar'), confirm: () => true, alert: () => {}, console, setInterval: () => 0, setTimeout, clearTimeout, Date, parseInt, Set, Math, JSON,
       localStorage: { getItem: () => null, setItem() {} } };
     vm.createContext(ctx);

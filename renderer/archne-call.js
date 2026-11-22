@@ -11,6 +11,7 @@
   const DISCONNECT_GRACE_MS = 8000; // 'disconnected' sering pulih sendiri (pindah Wi-Fi); lebih lama dari ini dianggap putus
   const SYNC_GUARD_MS = 3000;       // snapshot state yang lebih tua dari ini terhadap panggilan baru tidak boleh mengakhirinya
   const ICE_BUF_MAX = 100;
+  const HINT_MS = 10000;            // sambungan belum aktif selama ini: tampilkan petunjuk TURN (bila relevan)
 
   // Peredam kebisingan (v0.16.0). Dipilih pengguna saat panggilan berjalan; tiap panggilan mulai dari 'standard'.
   //   off      = tanpa peredam bising (gema dan AGC tetap menyala)
@@ -20,6 +21,16 @@
   // Teks UI: kunci i18n + cadangan Indonesia (tanpa I18N = teks Indonesia, tes Node/vm lama tetap jalan). Dibaca saat dipakai, jadi mengikuti bahasa aktif.
   const ct = (k, fb, p) => (typeof I18N !== 'undefined' && I18N.tx ? I18N.tx(k, p) : (p ? fb.replace(/\{(\w+)\}/g, (m, x) => (p[x] != null ? p[x] : m)) : fb));
   const tnc = (k, n, fb) => (typeof I18N !== 'undefined' && I18N.tn ? I18N.tn(k, n, { count: n }) : fb.replace('{count}', n));
+  // Berbagi layar (v0.32.0, Fase B). Batas awal (keputusan D4): teks tajam, gerak sedang. Dipasang lewat sender.setParameters (usaha terbaik; peramban boleh mengabaikan).
+  const SCR_MAX_BITRATE = 3000000; // bit/detik per kaki; mesh mengalikannya dengan jumlah penonton
+  const SCR_MAX_FPS = 30;
+  const SCR_MANY = 3; // jumlah kaki (penonton) mulai peringatan beban
+  const scrMsg = (k) => ({
+    err: () => ct('cl.scr.err', 'Layar tidak bisa dibagikan.'),
+    busy: () => ct('cl.scr.busy', 'Peserta lain sedang berbagi layar. Satu layar saja per panggilan.'),
+    many: () => ct('cl.scr.many', 'Banyak penonton: layarmu dikirim ke setiap orang, jadi koneksi bisa terasa berat.'),
+    camBlock: () => ct('cl.scr.camBlock', 'Hentikan berbagi layar dulu untuk menyalakan kamera.'),
+  }[k]());
   const camFullMsg = () => ct('cl.camFull', 'Kamera penuh, maksimal {max} orang yang menyalakan kamera.', { max: CAM_MAX });
   const noVidMsg = () => ct('cl.noVid', 'Lawan bicara memakai Archne versi lama, jadi video belum bisa dikirim ke dia. Perbarui Archne di perangkatnya.');
 const NOISE_MODES = ['off', 'standard', 'strong'];
@@ -170,8 +181,8 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     view() {
       const c = this.cur;
       if (!c) return null;
-      const v = { cid: c.cid, room: c.room, vc: c.vc ? (c.pv ? { gid: c.vc.gid, cid: c.vc.cid, name: c.vc.name, pv: true } : { gid: c.vc.gid, cid: c.vc.cid, name: c.vc.name }) : null, invite: !!c.invite, invites: [...c.invites.values()].map((x) => ({ peer: x.peer, name: x.name })), members: Array.isArray(c.members) ? c.members.map((m) => ({ id: m.id, name: m.name })) : [], peer: c.peer, name: c.name, dir: c.dir, phase: c.phase, video: !!c.video, camErr: c.camErr || '', camOff: !!c.camOff, facing: c.facing === 'environment' ? 'environment' : 'user', vrev: c.vrev || 0, muted: c.muted, deafened: !!c.deafened, speaker: c.speaker, noise: c.noise, since: c.since || 0, canAccept: c.dir === 'in' && c.phase === 'ringing',
-        legs: c.legs.map((l) => Object.assign({ cid: l.cid, peer: l.peer, name: l.name, dir: l.dir, state: l.phase, video: !!l.vremote && !l.vlatent, muted: !!(l.deafened || l.muted), deafened: !!l.deafened }, typeof l.vcam === 'boolean' ? { cam: l.vcam } : {})) };
+      const v = { cid: c.cid, room: c.room, vc: c.vc ? (c.pv ? { gid: c.vc.gid, cid: c.vc.cid, name: c.vc.name, pv: true } : { gid: c.vc.gid, cid: c.vc.cid, name: c.vc.name }) : null, invite: !!c.invite, invites: [...c.invites.values()].map((x) => ({ peer: x.peer, name: x.name })), members: Array.isArray(c.members) ? c.members.map((m) => ({ id: m.id, name: m.name })) : [], peer: c.peer, name: c.name, dir: c.dir, phase: c.phase, video: !!c.video, camErr: c.camErr || '', camOff: !!c.camOff, scr: !!c.scr, scrAudio: !!c.sys, scrCan: this.canScreen(), facing: c.facing === 'environment' ? 'environment' : 'user', vrev: c.vrev || 0, muted: c.muted, deafened: !!c.deafened, speaker: c.speaker, noise: c.noise, since: c.since || 0, canAccept: c.dir === 'in' && c.phase === 'ringing',
+        legs: c.legs.map((l) => Object.assign({ cid: l.cid, peer: l.peer, name: l.name, dir: l.dir, state: l.phase, video: !!l.vremote && !l.vlatent, muted: !!(l.deafened || l.muted), deafened: !!l.deafened }, typeof l.vcam === 'boolean' ? { cam: l.vcam } : {}, l.vscr === true && l.vcam === true ? { scr: true } : {})) };
       if (c.vc) { v.camMax = CAM_MAX; v.camCount = (c.camOff ? 0 : 1) + c.legs.filter((l) => l.vcam === true).length; } // channel: kamera hidup sekarang / batas
       return v;
     }
@@ -187,6 +198,10 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       if (!l || !l.vremote || l.vcam === false || (l.vlatent && l.vcam !== true)) return null;
       return l.vremote;
     }
+    // Trek video lawan ini adalah layar (tampil contain, bukan cover)? Hanya sah bila kameranya hidup; dibaca UI bersama remoteVideo.
+    remoteScreen(peer) { const c = this.cur, l = c && c.legs.find((x) => x.peer === peer); return !!(l && l.vscr === true && l.vcam === true); }
+    // Berbagi layar tersedia? Fitur dideteksi (rtc.getDisplayMedia hanya ada bila API-nya ada), bukan ditebak dari platform.
+    canScreen() { return !!this.rtc && typeof this.rtc.getDisplayMedia === 'function'; }
     _render() { try { this.ui.render(this.view()); } catch {} }
     _ring(k) { try { this.ui.ring(k); } catch {} }
 
@@ -207,14 +222,30 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     // ICE per kaki (mode lintas jaringan): Core menjawab [] untuk peer LAN (seperti sebelumnya) dan STUN+TURN untuk peer lintas jaringan.
     // Gagal bertanya = [] (jalur LAN tidak butuh apa pun). False bila panggilan/kaki sudah dibatalkan selama menunggu.
     async _prepIce(c, l) {
-      l.ice = []; l.wan = false;
+      l.ice = []; l.wan = false; l.turnHint = '';
       if (typeof this.api.turnIce === 'function') {
         try {
           const r = await this.api.turnIce(l.peer);
-          if (r && r.ok && Array.isArray(r.iceServers)) { l.ice = r.iceServers; l.wan = !!r.wan; }
+          if (r && r.ok && Array.isArray(r.iceServers)) {
+            l.ice = r.iceServers; l.wan = !!r.wan;
+            // Lawan di jaringan lain tanpa relay TURN yang jalan: kadang tetap tersambung (STUN cukup), jadi JANGAN memperingatkan di awal.
+            // Petunjuk disimpan dan hanya ditampilkan bila sambungan macet (lihat _conn dan _hintArm).
+            l.turnHint = l.wan && (r.err || r.provider === 'none') ? (r.provider === 'none' ? ct('cl.notice.noTurn', 'Belum tersambung. TURN belum diatur; di jaringan ketat (data seluler, dua router) ini sering penyebabnya. Atur di Pengaturan > Lintas jaringan.') : ct('cl.notice.turnFail', 'Belum tersambung. Server relay (TURN) tidak bisa dihubungi, jadi jaringan ketat (data seluler, dua router) bisa gagal.')) : '';
+          }
         } catch {}
       }
       return this.cur === c && c.legs.includes(l);
+    }
+
+    // Petunjuk TURN: tampil sekali bila sambungan belum aktif setelah HINT_MS, atau langsung saat gagal. Tidak tampil bila tersambung.
+    _hintShow(c, l) {
+      if (!l.turnHint || l.hintShown || this.cur !== c || l.phase === 'active') return;
+      l.hintShown = true;
+      try { if (this.ui.notice) this.ui.notice(l.turnHint); } catch {}
+    }
+    _hintArm(c, l) {
+      if (!l.turnHint || l.hintT) return;
+      l.hintT = this.setT(() => { l.hintT = null; this._hintShow(c, l); }, HINT_MS);
     }
 
     _pc(c, l) {
@@ -248,8 +279,12 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
         if (c.deafened) this._deafLeg(l, true); // kaki yang datang saat deafen aktif langsung dibisukan
       };
       pc.onconnectionstatechange = () => this._conn(c, l, pc.connectionState);
+      this._hintArm(c, l);
       // kaki yang dibuat sesudah peredam Kuat menyala harus mengirim jalur olahan, bukan mikrofon mentah
-      if (c.proc && c.proc.stream && l.sender && typeof l.sender.replaceTrack === 'function') {
+      if (c.sys && c.sys.mix && c.sys.mix.stream && l.sender && typeof l.sender.replaceTrack === 'function') {
+        const t = c.sys.mix.stream.getAudioTracks()[0]; // sedang berbagi audio sistem: kaki baru langsung mengirim campuran
+        if (t) Promise.resolve(l.sender.replaceTrack(t)).catch(() => {});
+      } else if (c.proc && c.proc.stream && l.sender && typeof l.sender.replaceTrack === 'function') {
         const t = c.proc.stream.getAudioTracks()[0];
         if (t) Promise.resolve(l.sender.replaceTrack(t)).catch(() => {});
       }
@@ -272,13 +307,14 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     _vidAttach(c, l) {
       try {
         const vt = c.stream && typeof c.stream.getVideoTracks === 'function' ? c.stream.getVideoTracks().find((t) => t && t.readyState !== 'ended') : null;
-        if (vt && l.vsender && typeof l.vsender.replaceTrack === 'function') Promise.resolve(l.vsender.replaceTrack(vt)).catch(() => {});
+        if (vt && l.vsender && typeof l.vsender.replaceTrack === 'function') Promise.resolve(l.vsender.replaceTrack(vt)).then(() => { if (c.scr) return this._tuneScreen(c); }).catch(() => {}); // kaki yang datang saat berbagi layar ikut dibatasi bitrate-nya
       } catch {}
     }
 
     _conn(c, l, st) {
       if (this.cur !== c || !c.legs.includes(l)) return;
       if (st === 'connected') {
+        if (l.hintT) { this.clearT(l.hintT); l.hintT = null; }
         if (l.timer) { this.clearT(l.timer); l.timer = null; }
         if (l.phase !== 'active') { l.phase = 'active'; if (l.cid) { this.api.callConnected(l.cid); if (c.video) this._announce(c); } }
         if (c.phase !== 'active') {
@@ -289,6 +325,7 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       } else if (st === 'disconnected') {
         if (!l.timer) l.timer = this.setT(() => { l.timer = null; if (this.cur === c && c.legs.includes(l)) { l.failed = l.phase !== 'active'; this._legDown(c, l, 'failed'); } }, DISCONNECT_GRACE_MS);
       } else if (st === 'failed') {
+        this._hintShow(c, l);
         l.failed = l.phase !== 'active';
         this._legDown(c, l, 'failed');
       }
@@ -373,6 +410,8 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       try { if (c.stream) for (const t of c.stream.getTracks()) t.stop(); } catch {}
       try { if (c.proc) c.proc.stop(); } catch {}
       c.proc = null;
+      try { if (c.sys) { if (c.sys.mix) c.sys.mix.stop(); c.sys.track.stop(); } } catch {}
+      c.sys = null;
       this._natEnd(c);
       this._ring(null);
       this._render();
@@ -383,6 +422,7 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
 
     _closeLeg(l) {
       if (l.timer) { this.clearT(l.timer); l.timer = null; }
+      if (l.hintT) { this.clearT(l.hintT); l.hintT = null; }
       try { if (l.pc) { l.pc.onicecandidate = l.pc.ontrack = l.pc.onconnectionstatechange = null; l.pc.close(); } } catch {}
       try { if (l.stopAudio) l.stopAudio(); } catch {}
       l.stopAudio = null; l.remote = null; l.vremote = null; l.vsender = null;
@@ -429,6 +469,7 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       const c = this.cur = this._new(peerId, name, 'out'), l = c.legs[0];
       c.video = !!(opts && opts.video); c.camOff = !c.video;
       this._ring('out'); this._render();
+      const icep = this._prepIce(c, l); // ambil kredensial TURN sambil menunggu izin mikrofon (dulu berurutan, bisa menambah sampai 8 dtk)
       const stream = await this._gum(c);
       if (this.cur !== c) { if (stream) this._stopStream(stream); return { ok: false }; } // dibatalkan saat menunggu izin mikrofon
       if (!stream) { this._finish(c, { reason: 'mic', err: this._micErr }); return { ok: false }; }
@@ -436,7 +477,7 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       this._natBegin(c);
       if (c.video) this._render(); // pratinjau kamera sendiri
       let sdp;
-      if (!(await this._prepIce(c, l))) return { ok: false };
+      if (!(await icep)) return { ok: false };
       try {
         const pc = this._pc(c, l);
         const offer = await pc.createOffer();
@@ -548,13 +589,14 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       c.video = sdpHasVideo(l.offer); // tawaran berisi video = panggilan video: kamera ikut dinyalakan
       c.camOff = !c.video;
       this._ring(null); this._render();
+      const icep = this._prepIce(c, l);
       const stream = await this._gum(c);
       if (this.cur !== c) { if (stream) this._stopStream(stream); return { ok: false }; } // penelepon membatalkan saat menunggu izin
       if (!stream) { this.api.callReject(l.cid); this._finish(c, { reason: 'mic', err: this._micErr }); return { ok: false }; }
       c.stream = stream; this._applyMic(c);
       this._natBegin(c);
       if (c.video) this._render(); // pratinjau kamera sendiri
-      if (!(await this._prepIce(c, l))) return { ok: false };
+      if (!(await icep)) return { ok: false };
       try {
         const pc = this._pc(c, l);
         await pc.setRemoteDescription({ type: 'offer', sdp: l.offer });
@@ -704,6 +746,11 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
         if (c.video) { c.camOff = typeof on === 'boolean' ? !on : !c.camOff; this._render(); }
         return Promise.resolve(c.camOff);
       }
+      if (c.scr) { // sedang berbagi layar: tombol kamera mematikan layar (tanpa memulihkan kamera); menyalakan kamera ditolak sampai layar dihentikan
+        if (on === false || (typeof on !== 'boolean')) return this.stopScreen({ restore: false }).then(() => c.camOff);
+        try { if (this.ui.notice) this.ui.notice(scrMsg('camBlock')); } catch {}
+        return Promise.resolve(c.camOff);
+      }
       return this._chanCam(c, on);
     }
     // Android memutus kamera saat aplikasi di latar belakang atau layar mati, dan kamera channel yang membeku masih menghitung ke batas 4 serta tampil
@@ -713,7 +760,7 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       const c = this.cur;
       if (!c || !c.vc) return;
       if (hidden === true) {
-        if (!c.camOff && !c.camBusy) { c.camBg = true; await this._chanCam(c, false); }
+        if (!c.camOff && !c.camBusy && !c.scr) { c.camBg = true; await this._chanCam(c, false); } // layar yang dibagikan tidak ikut mati saat jendela diperkecil
       } else if (c.camBg) {
         c.camBg = false;
         try { if (this.ui.notice) this.ui.notice(ct('cl.notice.camBg', 'Kamera dimatikan saat aplikasi di latar belakang. Nyalakan lagi dengan tombol Kamera.')); } catch {}
@@ -768,10 +815,100 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
         if (this.cur === c) this._render();
       }
     }
+    // ---- Berbagi layar (v0.32.0, Fase B) ----
+    // Layar = sumber video lain di jalur video yang sama (satu jalur per kaki, B.3): kamera dimatikan sementara, lalu dipulihkan saat berhenti.
+    // Tanpa negosiasi ulang (replaceTrack), jadi panggilan tidak putus. Pengguna harus memilih sumbernya sendiri (pemilih ada di sisi rtc.getDisplayMedia).
+    // Hasil: true bila layar kini dibagikan.
+    async startScreen(opts) {
+      const c = this.cur;
+      if (!c || c.scr || c.invite || c.phase === 'ringing' || !c.stream || !c.room || c.camBusy || c.scrBusy) return !!(c && c.scr);
+      const notice = (t) => { if (this.cur === c) { try { if (this.ui.notice) this.ui.notice(t); } catch {} } };
+      if (!this.canScreen()) { notice(scrMsg('err')); return false; }
+      if (c.legs.some((x) => x.vscr === true && x.vcam === true)) { notice(scrMsg('busy')); return false; } // D2: satu pembagi layar per panggilan
+      if (c.legs.length && !c.legs.some((x) => x.vsender)) { notice(noVidMsg()); return false; } // lawan versi lama: tidak ada jalur video
+      c.scrBusy = c.camBusy = true;
+      try {
+        let gs = null;
+        try { gs = await this.rtc.getDisplayMedia(opts || {}); }
+        catch (e) {
+          if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) return false; // pengguna menutup pemilih: bukan galat
+          const d = e && (e.userMsg || e.detail || [e.name, e.message].filter(Boolean).join(': '));
+          notice(d ? ct('cl.scr.errD', 'Layar tidak bisa dibagikan [{d}].', { d: String(d).slice(0, 80) }) : scrMsg('err'));
+          return false;
+        }
+        const vt = gs && typeof gs.getVideoTracks === 'function' ? gs.getVideoTracks()[0] || null : null;
+        if (this.cur !== c || !vt) { if (gs) this._stopStream(gs); return false; } // panggilan selesai saat memilih, atau tanpa trek
+        try { vt.contentHint = 'detail'; } catch {} // teks/slide: pertahankan ketajaman, bukan kelancaran
+        // Core memutuskan (channel: layar memakai satu slot kamera dari batas 4); ditolak -> dilepas tanpa pernah dikirim.
+        let rr = null;
+        try { rr = await this.api.callMedia(c.room, !!c.muted, !!c.deafened, true, true); } catch {}
+        if (this.cur !== c) { this._stopStream(gs); return false; }
+        if (rr && rr.ok === false && rr.err === 'cam_full') { this._stopStream(gs); notice(camFullMsg()); return false; }
+        c.scrPrev = { camOn: !!c.video && !c.camOff, video: !!c.video };
+        const old = typeof c.stream.getVideoTracks === 'function' ? c.stream.getVideoTracks() : [];
+        for (const t of old) { try { t.stop(); } catch {} try { c.stream.removeTrack(t); } catch {} } // kamera dimatikan sementara (lampunya padam)
+        c.video = true; c.camOff = false; c.scr = true; c.camErr = ''; c.vrev = (c.vrev || 0) + 1;
+        try { c.stream.addTrack(vt); } catch {}
+        c.scrTrack = vt;
+        try { vt.addEventListener('ended', () => { if (this.cur === c && c.scr && c.scrTrack === vt) this.stopScreen(); }); } catch {} // B.4: "Stop sharing" dari bilah sistem
+        for (const l of c.legs) if (l.vsender && typeof l.vsender.replaceTrack === 'function') { try { await l.vsender.replaceTrack(vt); } catch {} }
+        await this._tuneScreen(c);
+        // C.6: audio sistem hanya ada bila pengguna mencentangnya di pemilih (proses utama yang memutuskan). Gagal = layar tetap jalan tanpa suara.
+        const at = typeof gs.getAudioTracks === 'function' ? gs.getAudioTracks()[0] || null : null;
+        if (at) {
+          if (c.legs.length && await this._startSysAudio(c, at)) {
+            try { at.addEventListener('ended', () => { if (this.cur === c && c.sys && c.sys.track === at) { this._stopSysAudio(c).then(() => { if (this.cur === c) this._render(); }); } }); } catch {}
+            let sup = true; try { const st = typeof at.getSettings === 'function' ? at.getSettings() : null; sup = !!(st && st.suppressLocalAudioPlayback === true); } catch {}
+            if (!sup) notice(ct('cl.scr.audioEcho', 'Audio sistem ikut. Pencegah gema tidak aktif di perangkat ini, jadi pakai headphone.')); // gema tidak terbukti dicegah: beri tahu, jangan diam
+          } else { try { at.stop(); } catch {} notice(ct('cl.scr.audioFail', 'Audio sistem tidak bisa dibagikan. Layar tetap dibagikan tanpa suara.')); }
+        }
+        if (this.cur !== c) { this._stopStream({ getTracks: () => [vt] }); return false; }
+        if (c.legs.length >= SCR_MANY) notice(scrMsg('many')); // B.7
+        return true;
+      } finally {
+        c.scrBusy = c.camBusy = false;
+        if (this.cur === c) this._render();
+      }
+    }
+    // Batasi beban tiap kaki (B.6). Usaha terbaik: setParameters yang gagal tidak menghentikan berbagi.
+    async _tuneScreen(c) {
+      for (const l of c.legs) {
+        const sd = l.vsender;
+        if (!sd || typeof sd.getParameters !== 'function' || typeof sd.setParameters !== 'function') continue;
+        try {
+          const p = sd.getParameters() || {};
+          if (!Array.isArray(p.encodings) || !p.encodings.length) p.encodings = [{}];
+          p.encodings[0].maxBitrate = SCR_MAX_BITRATE; p.encodings[0].maxFramerate = SCR_MAX_FPS;
+          await sd.setParameters(p);
+        } catch {}
+      }
+    }
+    // Hentikan berbagi layar. restore=false: kamera tidak dipulihkan (tombol kamera ditekan saat berbagi). Selalu aman dipanggil berulang.
+    async stopScreen(o) {
+      const c = this.cur;
+      if (!c || !c.scr || c.scrStopping) return false;
+      c.scrStopping = true;
+      const restore = !(o && o.restore === false), prev = c.scrPrev || { camOn: false };
+      try {
+        const vt = c.scrTrack; c.scrTrack = null; c.scr = false; c.scrPrev = null;
+        await this._stopSysAudio(c); // audio sistem berhenti bersama layar; yang dikirim kembali mikrofon saja
+        for (const l of c.legs) if (l.vsender && typeof l.vsender.replaceTrack === 'function') { try { await l.vsender.replaceTrack(null); } catch {} }
+        const old = typeof c.stream.getVideoTracks === 'function' ? c.stream.getVideoTracks() : [];
+        for (const t of old.concat(vt ? [vt] : [])) { try { t.stop(); } catch {} try { c.stream.removeTrack(t); } catch {} }
+        c.camOff = true; c.vrev = (c.vrev || 0) + 1;
+        if (this.cur !== c) return false;
+        try { await this.api.callMedia(c.room, !!c.muted, !!c.deafened, false, false); } catch {} // layar ditutup di sisi lawan; kamera menyala lagi (bila dipulihkan) dikabarkan sendiri
+        if (this.cur === c && restore && prev.camOn) { c.camBusy = false; await this._chanCam(c, true); } // pulihkan kamera; gagal -> kamera mati + pemberitahuan dari _chanCam
+        return true;
+      } finally {
+        c.scrStopping = false;
+        if (this.cur === c) this._render();
+      }
+    }
     // Balik kamera depan <-> belakang. Hasil true bila berhasil.
     flipCamera() {
       const c = this.cur;
-      if (!c || !c.video || !c.stream || c.camBusy || c.phase === 'ringing' || c.camOff) return Promise.resolve(false);
+      if (!c || !c.video || !c.stream || c.camBusy || c.scr || c.phase === 'ringing' || c.camOff) return Promise.resolve(false);
       return this._swapCam(c, c.facing === 'environment' ? 'user' : 'environment', ct('cl.err.camOther', 'Kamera lain tidak tersedia'));
     }
     // Ganti trek kamera ke arah `want`. Kamera lama dilepas dulu (kamera ponsel umumnya tidak bisa dibuka dua kali sekaligus); bila yang baru gagal,
@@ -851,11 +988,38 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     // Berlaku ke semua kaki (mikrofon dipakai bersama). false bila tidak ada pengirim atau salah satunya gagal.
     async _send(c, stream) {
       try {
-        const t = stream.getAudioTracks()[0], ss = c.legs.map((x) => x.sender).filter(Boolean);
-        if (!ss.length || !t || ss.some((x) => typeof x.replaceTrack !== 'function')) return false;
+        let out = stream, nm = null;
+        if (c.sys && c.sys.track) { // berbagi layar dengan audio sistem: kirim campuran (mikrofon dari `stream` + audio sistem), bukan mikrofon saja
+          nm = typeof this.rtc.mixAudio === 'function' ? this.rtc.mixAudio(stream, c.sys.track) : null;
+          if (nm && nm.stream) out = nm.stream; else nm = null;
+        }
+        const t = out.getAudioTracks()[0], ss = c.legs.map((x) => x.sender).filter(Boolean);
+        if (!ss.length || !t || ss.some((x) => typeof x.replaceTrack !== 'function')) { if (nm) nm.stop(); return false; }
         await Promise.all(ss.map((x) => x.replaceTrack(t)));
+        if (c.sys) { const old = c.sys.mix; c.sys.mix = nm; if (old) { try { old.stop(); } catch {} } }
         return true;
       } catch { return false; }
+    }
+    // Sumber mikrofon yang sedang dipakai: hasil peredam Kuat bila ada, kalau tidak mikrofon asli.
+    _micSrc(c) { return c.proc && c.proc.stream ? c.proc.stream : c.stream; }
+    // C.6: pasang audio sistem dari aliran layar ke panggilan. false bila gagal (layar tetap jalan tanpa suara).
+    async _startSysAudio(c, at) {
+      c.sys = { track: at, mix: null };
+      let ok = false;
+      try { ok = await this._send(c, this._micSrc(c)); } catch {}
+      if (ok && c.sys && c.sys.mix) return true;
+      if (c.sys && c.sys.mix) { try { c.sys.mix.stop(); } catch {} }
+      c.sys = null;
+      if (ok) { try { await this._send(c, this._micSrc(c)); } catch {} } // jatuh kembali ke mikrofon saja
+      return false;
+    }
+    // Lepas audio sistem dan kembalikan mikrofon saja ke semua kaki. Aman dipanggil berulang.
+    async _stopSysAudio(c) {
+      const s = c.sys; if (!s) return;
+      c.sys = null;
+      try { if (this.cur === c && c.stream) await this._send(c, this._micSrc(c)); } catch {}
+      try { if (s.mix) s.mix.stop(); } catch {}
+      try { s.track.stop(); } catch {}
     }
 
     // Speaker (hanya bila cangkang menyediakan). Gagal di cangkang -> tombol kembali ke keadaan semula.
@@ -930,6 +1094,8 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       if (ev.ev === 'peerstate') { // status mik/deafen lawan bicara; deafen selalu berarti mik mati. Ikonnya tampil lewat overlayHtml (4c-3).
         l.deafened = ev.deafened === true; l.muted = l.deafened || ev.muted === true;
         if (typeof ev.cam === 'boolean') l.vcam = ev.cam; // kamera lawan hidup/mati (bila dia mengabarkannya)
+        if (typeof ev.scr === 'boolean') l.vscr = ev.scr && l.vcam === true; // layar lawan (medan s); peer v0.31 tidak pernah mengirimnya, jadi tetap tampil sebagai kamera
+        else if (ev.cam === false) l.vscr = false;
         this._render();
         return;
       }
@@ -1071,6 +1237,70 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     } catch { try { if (ctx) ctx.close(); } catch {} return null; }
   }
 
+  // ---- E: layar HP lewat plugin native (loopback WebRTC di perangkat yang sama) ----
+  // Native (ArchneScreen) menangkap layar + suara sistem dan mengirimnya lewat PeerConnection native; di sini RTCPeerConnection di WebView menerimanya
+  // dan hasilnya dikembalikan sebagai MediaStream biasa (video + audio opsional), jadi startScreen() memperlakukannya persis seperti di desktop.
+  // Sinyal (offer/answer/ICE) hanya melewati cangkang ke plugin; tidak ada yang keluar ke jaringan. Tanpa STUN: kandidat host cukup.
+  // Menghentikan trek video (stopScreen / tombol Hentikan) menghentikan tangkapan native; "Berhenti berbagi" dari sistem mengirim 'ended' yang di sini diubah jadi kejadian ended pada trek.
+  async function androidDisplayMedia(w, bridge, o) {
+    const wantAudio = !(o && o.audio === false);
+    const fail = (name, userMsg) => { const e = new Error(userMsg || name); e.name = name; if (userMsg) e.userMsg = userMsg; return e; };
+    const lb = new w.RTCPeerConnection({ iceServers: [] });
+    const st = { closed: false, vt: null, at: null, el: null, remote: false, pend: [], excl: true };
+    let offerRes = null;
+    const offerP = new Promise((res) => { offerRes = res; });
+    const sleep = (ms) => new Promise((res) => w.setTimeout(res, ms));
+    const addIce = (d) => { try { return lb.addIceCandidate({ candidate: d.c, sdpMid: d.mid || '', sdpMLineIndex: d.ml || 0 }); } catch { return null; } };
+    const fire = (t) => { if (t) { try { t.dispatchEvent(new w.Event('ended')); } catch {} } };
+    const close = (notifyNative) => {
+      if (st.closed) return;
+      st.closed = true;
+      if (bridge.onScreenSig === handler) bridge.onScreenSig = null;
+      if (notifyNative) bridge.send('screen-stop');
+      if (st.el) { try { st.el.pause(); st.el.srcObject = null; } catch {} }
+      try { lb.close(); } catch {}
+    };
+    const handler = (d) => {
+      if (d.t === 'offer' && typeof d.sdp === 'string') offerRes(d.sdp);
+      else if (d.t === 'ice' && typeof d.c === 'string') { if (st.remote) addIce(d); else st.pend.push(d); }
+      else if (d.t === 'ended') { const v = st.vt, a = st.at; close(false); fire(a); fire(v); } // pengguna menekan "Berhenti berbagi" di sistem, atau tangkapan putus
+      else if (d.t === 'audiofail') { const a = st.at; if (a) { st.at = null; fire(a); } } // suara sistem tidak bisa ditangkap: UI melepas audio, layar jalan terus
+    };
+    bridge.onScreenSig = handler;
+    lb.onicecandidate = (e) => { if (e && e.candidate && !st.closed) bridge.send('screen-ice', { c: e.candidate.candidate, mid: e.candidate.sdpMid || '', ml: e.candidate.sdpMLineIndex || 0 }); };
+    const got = new Promise((res) => { lb.ontrack = (e) => { if (!e || !e.track) return; if (e.track.kind === 'video') { st.vt = e.track; res(); } else if (e.track.kind === 'audio') st.at = e.track; }; });
+    try {
+      const r = await bridge.ask('screen-start', undefined, 120000, { audio: wantAudio }); // dialog izin layar sistem bisa lama terbuka
+      if (!r.ok) {
+        if (r.res === 'denied') throw fail('NotAllowedError');
+        throw fail('NotReadableError', r.res === 'nosvc' ? ct('cl.scr.noSvc', 'Layanan latar belum siap. Coba lagi sebentar lagi.') : r.res === 'timeout' ? ct('cl.scr.timeout', 'Pemilihan layar tidak dijawab.') : (r.res || '').slice(0, 80));
+      }
+      const sdp = await Promise.race([offerP, sleep(10000).then(() => null)]);
+      if (!sdp) throw fail('NotReadableError', ct('cl.scr.noOffer', 'Tangkapan layar tidak mulai.'));
+      await lb.setRemoteDescription({ type: 'offer', sdp });
+      const ans = await lb.createAnswer();
+      await lb.setLocalDescription(ans);
+      bridge.send('screen-answer', { sdp: ans.sdp });
+      st.remote = true;
+      for (const d of st.pend.splice(0)) addIce(d);
+      const ok = await Promise.race([got.then(() => true), sleep(12000).then(() => false)]);
+      if (!ok || !st.vt) throw fail('NotReadableError', ct('cl.scr.noVideo', 'Video layar tidak sampai. Coba lagi.'));
+    } catch (e) { close(true); throw e; }
+    const vt = st.vt, at = st.at;
+    // Menghentikan trek video = menghentikan tangkapan native (stopScreen / _stopStream memanggil stop()).
+    const stopV = vt.stop.bind(vt);
+    vt.stop = () => { try { stopV(); } catch {} close(true); };
+    const tracks = [vt];
+    if (at && wantAudio) {
+      // Chromium: trek audio WebRTC jarak jauh hanya mengalir ke WebAudio bila juga terpasang di elemen media. Dibisukan: tidak ada suara ganda di perangkat pembagi.
+      try { st.el = new w.Audio(); st.el.muted = true; st.el.srcObject = new w.MediaStream([at]); const p = st.el.play(); if (p && p.catch) p.catch(() => {}); } catch {}
+      const gs = typeof at.getSettings === 'function' ? at.getSettings.bind(at) : () => ({});
+      at.getSettings = () => Object.assign({}, gs(), { suppressLocalAudioPlayback: st.excl }); // native mengeluarkan suara Archne sendiri (excludeUid): tanpa gema
+      tracks.push(at);
+    }
+    return new w.MediaStream(tracks);
+  }
+
   function browserRtc(w, bridge) {
     return {
       PeerConnection: w.RTCPeerConnection,
@@ -1089,6 +1319,20 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
         }
         return w.navigator.mediaDevices.getUserMedia(c);
       },
+      // B.1: hanya ada bila API-nya ada (dideteksi, bukan ditebak dari platform), jadi UI menyembunyikan tombolnya otomatis di WebView tanpa dukungan.
+      // Accessor (bukan nilai tetap) karena kemampuan cangkang Android (native-caps.screen) baru diketahui setelah iframe dimuat.
+      get getDisplayMedia() {
+        const nav = w.navigator && w.navigator.mediaDevices;
+        if (nav && typeof nav.getDisplayMedia === 'function') {
+          // C.6: di Electron audio diminta supaya pemilih Archne bisa menawarkan kotak "Bagikan audio sistem"; proses utama hanya mengembalikannya bila dicentang
+          // (bawaan mati). suppressLocalAudioPlayback = jangan rekam suara yang diputar Archne sendiri (suara lawan bicara), supaya tidak ada gema.
+          // Di peramban tetap tanpa audio: pemilih mereka sendiri, belum diuji.
+          return (o) => nav.getDisplayMedia(Object.assign({ video: { frameRate: { ideal: SCR_MAX_FPS, max: SCR_MAX_FPS } }, audio: (w.api && typeof w.api.onScreenPick === 'function') ? { suppressLocalAudioPlayback: true, echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false }, o || {}));
+        }
+        // E: WebView Android tanpa getDisplayMedia, tetapi cangkang punya plugin ArchneScreen (layar + suara sistem ditangkap native, dialirkan lewat loopback).
+        if (bridge && bridge.screen === true && typeof w.RTCPeerConnection === 'function') return (o) => androidDisplayMedia(w, bridge, o);
+        return undefined;
+      },
       makeStream: (tracks) => new w.MediaStream(tracks),
       // Peredam Kuat. Utama: mikrofon -> pelewat-tinggi 90 Hz -> RNNoise (AudioWorklet + WASM, 48 kHz) -> stream baru.
       // Bila RNNoise gagal dimuat (WebAudio/worklet/WASM tidak ada, CSP, waktu habis): jatuh ke noise gate buatan sendiri.
@@ -1100,6 +1344,25 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
         const pending = rnnoiseChain(w, AC, stream);
         try { r = await withTimeout(pending, RNNOISE_LOAD_MS); } catch { r = null; pending.then((late) => { if (late) late.stop(); }, () => {}); } // terlambat: jangan bocorkan AudioContext
         return r || gateChain(w, AC, stream);
+      },
+      // C.6: campur mikrofon (sudah lewat peredam bising bila Kuat) + audio sistem. Sengaja SETELAH RNNoise: peredam bising tidak menyentuh musik / video.
+      // Mikrofon bisu = trek mikrofon enabled=false = diam di campuran; audio sistem tidak ikut bisu (seperti Discord: bisu hanya untuk mikrofon).
+      // Kontrak { stream, stop(), engine:'mix' }. null bila WebAudio tidak ada atau gagal; pemanggil jatuh ke mikrofon saja.
+      mixAudio(mic, sysTrack) {
+        const AC = w.AudioContext || w.webkitAudioContext;
+        if (!AC || !mic || !sysTrack) return null;
+        let ctx = null;
+        try {
+          ctx = new AC({ sampleRate: 48000 });
+          if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
+          const ms = ctx.createMediaStreamSource(mic), ss = ctx.createMediaStreamSource(new w.MediaStream([sysTrack]));
+          const mg = ctx.createGain(), sg = ctx.createGain(); mg.gain.value = 1; sg.gain.value = 0.8; // sedikit di bawah suara: musik tidak menutup bicara
+          const lim = ctx.createDynamicsCompressor(); // pembatas: jumlah dua sumber tidak boleh pecah
+          const dst = ctx.createMediaStreamDestination();
+          ms.connect(mg); ss.connect(sg); mg.connect(lim); sg.connect(lim); lim.connect(dst);
+          const dead = ctx;
+          return { engine: 'mix', stream: dst.stream, stop() { try { ms.disconnect(); ss.disconnect(); mg.disconnect(); sg.disconnect(); lim.disconnect(); } catch {} try { dead.close(); } catch {} } };
+        } catch { try { if (ctx) ctx.close(); } catch {} return null; }
       },
       playRemote(stream) {
         const a = new w.Audio();
@@ -1180,11 +1443,21 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     let seq = 0;
     const b = {
       audio: false,
+      screen: false, // plugin ArchneScreen ada di cangkang (native-caps.screen): berbagi layar dari HP
+      onScreenSig: null, // (d) => void; diisi androidDisplayMedia: sinyal loopback dari plugin { t:'offer'|'ice'|'ended'|'audiofail'|'size', ... }
       onApp: null, // (hidden: boolean) => void; diisi UI: aplikasi ke latar belakang (true) atau kembali (false)
       onBack: null, // () => boolean; diisi UI: tombol Kembali perangkat. true = UI sudah menanganinya (tutup dialog, kecilkan panggilan), false = cangkang yang mundur / menyembunyikan aplikasi
       onPip: null, // (on: boolean) => void; diisi UI: jendela Picture-in-Picture tampil (true) atau ditutup (false)
       pipOn: false,
       pipWant: false,
+      viewerOn: false,
+      // Mode tonton layar penuh (landscape + bilah sistem tersembunyi, D.1): cangkang yang mengubahnya. Hanya dikirim bila berubah.
+      viewer(on) {
+        on = on === true;
+        if (on === b.viewerOn) return;
+        b.viewerOn = on;
+        try { w.parent.postMessage({ archne: 'native', action: 'viewer', id: 0, on }, '*'); } catch {}
+      },
       // Panggilan video aktif = siaga PiP. Hanya dikirim bila berubah.
       pip(on) {
         on = on === true;
@@ -1192,12 +1465,13 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
         b.pipWant = on;
         try { w.parent.postMessage({ archne: 'native', action: 'pip', id: 0, on }, '*'); } catch {}
       },
-      ask(action, on, ms) {
+      send(action, extra) { try { w.parent.postMessage(Object.assign({ archne: 'native', action, id: 0 }, extra || {}), '*'); } catch {} },
+      ask(action, on, ms, extra) {
         return new Promise((resolve) => {
           const id = ++seq;
           const t = T.setTimeout(() => { waiting.delete(id); resolve({ ok: false, res: 'timeout' }); }, ms || 4000);
           waiting.set(id, (r) => { T.clearTimeout(t); resolve(r); });
-          try { w.parent.postMessage({ archne: 'native', action, id, on: on === true }, '*'); } catch { waiting.delete(id); T.clearTimeout(t); resolve({ ok: false, res: 'send' }); }
+          try { w.parent.postMessage(Object.assign({}, extra || {}, { archne: 'native', action, id, on: on === true }), '*'); } catch { waiting.delete(id); T.clearTimeout(t); resolve({ ok: false, res: 'send' }); }
         });
       },
       hello() { try { w.parent.postMessage({ archne: 'native', action: 'hello', id: 0 }, '*'); } catch {} },
@@ -1205,7 +1479,8 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     w.addEventListener('message', (e) => {
       const d = e && e.data;
       if (!e || e.source !== w.parent || !d || typeof d !== 'object') return;
-      if (d.archne === 'native-caps') b.audio = d.audio === true;
+      if (d.archne === 'native-caps') { b.audio = d.audio === true; b.screen = d.screen === true; }
+      else if (d.archne === 'native-screen') { try { if (typeof b.onScreenSig === 'function') b.onScreenSig(d); } catch {} }
       else if (d.archne === 'native-app' && d.state === 'back') { // tombol Kembali: cangkang menunggu jawaban (maks. sebentar), jadi selalu dijawab
         let on = false; try { on = typeof b.onBack === 'function' && b.onBack() === true; } catch { on = false; }
         try { w.parent.postMessage({ archne: 'native', action: 'back-result', id: d.id, on }, '*'); } catch {}
@@ -1343,9 +1618,54 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     const mt = v.muted ? ct('cl.muteOnHint', 'Suara mati. Ketuk untuk menyalakan') : ct('cl.mute', 'Bisukan');
     const hl = v.vc ? ct('vc.leave', 'Keluar') : v.phase === 'dialing' ? ct('common.cancel', 'Batal') : ct('cl.hang', 'Akhiri');
     return `<div class="cmb" data-cact="max" role="button" tabindex="0" aria-label="${ct('cl.back', 'Kembali ke layar panggilan')}" title="${ct('cl.backHint', 'Ketuk untuk kembali ke layar panggilan')}"><span class="cmi">${(v.vc ? ic.speaker : ic.phone) || ''}</span><span class="cmn">${h.esc(name)}</span><span class="cmt" id="calltime" data-phase="${v.phase}">${status}</span></div>`
+      + (v.scr === true ? `<button type="button" class="cmx scr" data-cact="scrstop" aria-label="${ct('cl.scr.you', 'Kamu sedang berbagi layar')}. ${ct('cl.scr.stop', 'Hentikan layar')}" title="${ct('cl.scr.stop', 'Hentikan layar')}">${ic.screenOff || ''}</button>` : '')
       + `<button type="button" class="cmx tog${v.muted ? ' on' : ''}" data-cact="mute" aria-label="${mt}" title="${mt}">${(v.muted ? ic.micOff : ic.mic) || ''}</button>`
       + `<button type="button" class="cmx hang" data-cact="hang" aria-label="${hl}" title="${hl}">${ic.phone || ''}</button>`;
   }
+  // Mode tonton layar penuh (D.1): h.viewer = cangkang Android ada; h.viewKey = kartu yang sedang layar penuh; h.viewInvite = kunci layar yang baru dibagikan (ajakan).
+  const exitBtn = (key, h) => (h.viewKey === key
+    ? `<button type="button" class="cvx" data-cact="unview" aria-label="${ct('cl.scr.fullExit', 'Keluar dari layar penuh')}" title="${ct('cl.scr.fullExit', 'Keluar dari layar penuh')}">${(h.icons && h.icons.shrink) || '⤡'}</button>`
+    : `<button type="button" class="cvx" data-cact="unfocus" aria-label="${ct('cl.vid.grid', 'Kembali ke grid')}" title="${ct('cl.vid.grid', 'Kembali ke grid')}">${(h.icons && h.icons.shrink) || '⤡'}</button>`);
+  const fullBtn = (key, h) => (h.viewer === true && h.viewKey !== key
+    ? `<button type="button" class="cvf" data-cact="viewer" data-vfocus="${h.esc(key)}" aria-label="${ct('cl.scr.full', 'Layar penuh')}" title="${ct('cl.scr.full', 'Layar penuh')}">${(h.icons && h.icons.expand) || '⛶'}<span>${ct('cl.scr.full', 'Layar penuh')}</span></button>`
+    : '');
+  // keys: hanya peserta yang SEDANG membagikan layar (ajakan basi tidak boleh muncul di kartu kamera biasa)
+  const viewInviteHtml = (h, keys) => (h.viewer === true && !h.viewKey && h.viewInvite && keys.includes(h.viewInvite)
+    ? `<button type="button" class="cvi" data-cact="viewer" data-vfocus="${h.esc(h.viewInvite)}">${ct('cl.scr.fullInvite', 'Layar dibagikan, ketuk untuk layar penuh')}</button>`
+    : '');
+
+  // ---- Zoom + geser di mode tonton (D.1c) ----
+  // z = { s, x, y }: skala (1..VZ_MAX) dan geseran piksel dari tengah kotak w x h (CSS: translate(x,y) scale(s), titik asal di tengah). Di skala 1 geseran selalu 0;
+  // di skala lebih besar geseran dijaga supaya tepi video tidak lepas dari tepi kotak.
+  const VZ_MAX = 5, VZ_TAP = 2.5;
+  const vzNum = (n, d) => (typeof n === 'number' && isFinite(n) ? n : d);
+  const vzLim = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+  function vzClamp(z, w, h) {
+    const s = vzLim(vzNum(z && z.s, 1), 1, VZ_MAX);
+    if (s <= 1.001) return { s: 1, x: 0, y: 0 };
+    const mx = (Math.max(0, vzNum(w, 0)) * (s - 1)) / 2, my = (Math.max(0, vzNum(h, 0)) * (s - 1)) / 2;
+    return { s, x: vzLim(vzNum(z.x, 0), -mx, mx), y: vzLim(vzNum(z.y, 0), -my, my) };
+  }
+  // Gestur dari keadaan awal a = { z, pts } ke titik jari sekarang pts (semua relatif ke tengah kotak). Satu jari: geser (hanya bila sudah diperbesar).
+  // Dua jari: cubit; titik yang tadi ada di bawah titik tengah cubitan tetap di bawahnya, dan menggeser titik tengah ikut menggeser gambar.
+  // Jumlah jari berubah = pemanggil memulai gestur baru dari keadaan sekarang.
+  function vzGesture(a, pts, w, h) {
+    const z0 = vzClamp(a && a.z, w, h);
+    if (!a || !Array.isArray(a.pts) || !Array.isArray(pts) || !pts.length || a.pts.length !== pts.length) return z0;
+    if (pts.length === 1) return z0.s > 1 ? vzClamp({ s: z0.s, x: z0.x + pts[0].x - a.pts[0].x, y: z0.y + pts[0].y - a.pts[0].y }, w, h) : z0;
+    const d0 = Math.hypot(a.pts[1].x - a.pts[0].x, a.pts[1].y - a.pts[0].y), d1 = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    if (!(d0 > 1) || !isFinite(d1)) return z0;
+    const m0 = { x: (a.pts[0].x + a.pts[1].x) / 2, y: (a.pts[0].y + a.pts[1].y) / 2 }, m1 = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    const s1 = vzLim(z0.s * d1 / d0, 1, VZ_MAX), k = s1 / z0.s;
+    return vzClamp({ s: s1, x: m1.x - (m0.x - z0.x) * k, y: m1.y - (m0.y - z0.y) * k }, w, h);
+  }
+  // Ketuk dua kali di titik p: sedang diperbesar = kembali ke ukuran asli; belum = perbesar ke VZ_TAP kali tepat di titik itu.
+  function vzDoubleTap(z, p, w, h) {
+    if (vzClamp(z, w, h).s > 1) return { s: 1, x: 0, y: 0 };
+    return vzClamp({ s: VZ_TAP, x: -vzNum(p && p.x, 0) * (VZ_TAP - 1), y: -vzNum(p && p.y, 0) * (VZ_TAP - 1) }, w, h);
+  }
+  const vzCss = (z) => (z && z.s > 1 ? `translate(${Math.round(z.x * 10) / 10}px, ${Math.round(z.y * 10) / 10}px) scale(${Math.round(z.s * 1000) / 1000})` : '');
+
   // HTML layar panggilan. `h`: { esc(s), avatar(peerId) -> html, icons: { phone, mic, micOff, chev }, speaker: bool, speakerOn: bool, minimized: bool }
   function overlayHtml(v, h) {
     if (!v) return '';
@@ -1354,14 +1674,20 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     const ic = h.icons || {};
     return `<button type="button" class="cmin" data-cact="min" aria-label="${ct('cl.min', 'Kecilkan panggilan')}" title="${ct('cl.minHint', 'Kecilkan panggilan, supaya bisa membuka chat')}">${ic.chev || '⌄'}</button>` + overlayBody(v, h);
   }
+  // Indikator permanen berbagi layar (C.5): tampil selama kamu berbagi, juga saat tombol disembunyikan (layar penuh) atau panggilan dikecilkan.
   function overlayBody(v, h) {
     if (!v) return '';
+    const bar = v.scr === true && !v.invite ? `<div class="cscr" role="status"><span class="cscp"><span class="cscd" aria-hidden="true"></span><span>${ct('cl.scr.you', 'Kamu sedang berbagi layar')}${v.scrAudio === true ? ' · ' + ct('cl.scr.audioYou', 'Audio sistem ikut dibagikan') : ''}</span><button type="button" class="cscx" data-cact="scrstop">${ct('cl.scr.stopBtn', 'Berhenti')}</button></span></div>` : '';
+    return bar + overlayInner(v, h);
+  }
+  function overlayInner(v, h) {
     const status = v.phase === 'ringing' ? (v.video ? ct('cl.st.inVideo', 'Panggilan video masuk') : ct('cl.st.inVoice', 'Panggilan suara masuk')) : v.phase === 'dialing' ? ct('cl.st.dialing', 'Memanggil…') : v.phase === 'connecting' ? ct('cl.st.connecting', 'Menyambungkan…') : fmtDur(v.since ? (Date.now() - v.since) / 1000 : 0);
     const btn = (act, cls, label, icon, on) => `<div class="cbw"><button type="button" class="cbtn ${cls}${on ? ' on' : ''}" data-cact="${act}" aria-label="${label}" title="${label}">${icon}</button><span>${label}</span></div>`;
     // Tombol kamera (dan balik kamera bila perangkat punya lebih dari satu): selalu ada selama panggilan tersambung, kamera mati sampai dinyalakan (juga di 1-1 dan grup).
     // Tombol menyala = kamera hidup. Panggilan video yang masih menyambung / memanggil juga punya tombolnya (matikan kamera sebelum dijawab).
     const cam = !v.invite && (v.phase === 'active' || (!v.vc && v.video && v.phase !== 'ringing'));
     const camLabel = v.camOff ? (v.vc && v.camMax && v.camCount >= v.camMax ? ct('cl.cam.full', 'Kamera penuh') : v.vc && v.camCount > 0 ? ct('cl.cam.count', 'Kamera {n}/{max}', { n: v.camCount, max: v.camMax || 4 }) : ct('camera.title', 'Kamera')) : ct('cl.cam.on', 'Kamera hidup');
+    const scrOk = v.scrCan === true && !v.invite && v.phase === 'active'; // scrCan: fitur terdeteksi (tidak ada di WebView Android tanpa getDisplayMedia) -> tombol disembunyikan
     // Peredam bising: satu tombol sejajar tombol lain. Setiap ketukan pindah ke mode berikutnya (Mati -> Standar -> Kuat -> Mati).
     // data-cnoise berisi mode BERIKUTNYA (diteruskan ke setNoise oleh archne-index.html); data-nz = mode sekarang. Hanya setelah mikrofon dipakai.
     const nz = normNoise(v.noise) || NOISE_DEFAULT;
@@ -1372,6 +1698,7 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       ? `<div class="cbw"><button type="button" class="cbtn tog nz-${nz}${nz === 'strong' ? ' on' : ''}" data-cnoise="${nzNext}" data-nz="${nz}" aria-label="${nzAria}" title="${nzTitle}">${nz === 'off' ? (h.icons.noiseOff || '') : (h.icons.noise || '')}</button><span>${nzLabel}</span></div>`
       : '';
     const tog = v.phase === 'ringing' ? '' : btn('mute', 'tog', v.muted ? ct('cl.muted', 'Suara mati') : ct('cl.mute', 'Bisukan'), v.muted ? h.icons.micOff : h.icons.mic, v.muted)
+      + (scrOk ? btn('scr', 'tog', v.scr ? ct('cl.scr.stop', 'Hentikan layar') : ct('cl.scr.share', 'Bagikan layar'), v.scr ? (h.icons.screenOff || '') : (h.icons.screen || ''), !!v.scr) : '')
       + (cam ? btn('cam', 'tog', camLabel, v.camOff ? (h.icons.videoOff || '') : (h.icons.video || ''), !v.camOff) + (h.flip && !v.camOff ? btn('flip', 'tog', ct('camera.flip', 'Balik kamera'), h.icons.flip || '', false) : '') : '')
       + btn('deafen', 'tog', v.deafened ? ct('cl.deafOn', 'Deafen aktif') : ct('cl.deaf', 'Deafen'), v.deafened ? (h.icons.headOff || '') : (h.icons.head || ''), !!v.deafened)
       + nzBtn
@@ -1395,14 +1722,15 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       const keys = group ? [...legs.map((x) => x.peer), ...invs.filter((x) => !legs.some((l) => l.peer === x.peer)).map((x) => x.peer)] : [v.peer];
       keys.push('me');
       const fk = h.focus && keys.includes(h.focus) ? h.focus : '';
-      const tile = (key, name, who, me, wait, badge, off) => `<div class="cvt${me ? ' me' : ''}${off ? ' camoff' : ''}${wait ? ' wait' : ''}${fk === key ? ' big' : ''}" data-vkey="${h.esc(key)}" data-cact="focus" data-vfocus="${h.esc(key)}" role="button" tabindex="0" aria-label="${ct('cl.vid.zoom', 'Perbesar video {name}', { name: h.esc(name) })}"><span class="cva">${h.avatar(who)}</span><span class="cvn">${h.esc(name)}${badge || ''}</span>${wait ? `<span class="cvs">${wait}</span>` : ''}${fk === key ? `<button type="button" class="cvx" data-cact="unfocus" aria-label="${ct('cl.vid.grid', 'Kembali ke grid')}" title="${ct('cl.vid.grid', 'Kembali ke grid')}">${(h.icons && h.icons.shrink) || '⤡'}</button>` : ''}</div>`;
+      const tile = (key, name, who, me, wait, badge, off, scr) => `<div class="cvt${me ? ' me' : ''}${off ? ' camoff' : ''}${wait ? ' wait' : ''}${fk === key ? ' big' : ''}${h.viewKey === key && fk === key ? ' viewer' : ''}" data-vkey="${h.esc(key)}" data-cact="focus" data-vfocus="${h.esc(key)}" role="button" tabindex="0" aria-label="${ct('cl.vid.zoom', 'Perbesar video {name}', { name: h.esc(name) })}"><span class="cva">${h.avatar(who)}</span><span class="cvn">${h.esc(name)}${badge || ''}</span>${wait ? `<span class="cvs">${wait}</span>` : ''}${fk === key ? exitBtn(key, h) : ''}${scr === true ? fullBtn(key, h) : ''}</div>`;
       const first = legs.find((x) => x.peer === v.peer) || legs[0], vob = group ? '' : stateBadge(first, h);
       const noCam = (x) => !!x && x.state === 'active' && !legCam(x); // lawan yang kameranya mati: avatar + keterangan, bukan bingkai hitam
       const others = group
-        ? legs.map((x) => tile(x.peer, x.name || '?', x.peer, false, x.state !== 'active' ? ct('wan.stConnecting', 'Menyambung…') : noCam(x) ? ct('cl.vid.camOff', 'Kamera mati') : '', stateBadge(x, h), noCam(x))).join('')
+        ? legs.map((x) => tile(x.peer, x.name || '?', x.peer, false, x.state !== 'active' ? ct('wan.stConnecting', 'Menyambung…') : noCam(x) ? ct('cl.vid.camOff', 'Kamera mati') : '', stateBadge(x, h), noCam(x), x.scr === true)).join('')
           + invs.filter((x) => !legs.some((l) => l.peer === x.peer)).map((x) => tile(x.peer, x.name || '?', x.peer, false, ct('cl.st.inviting', 'Mengundang…'), '')).join('')
-        : tile(v.peer, v.name || '?', v.peer, false, noCam(first) ? ct('cl.vid.camOff', 'Kamera mati') : '', '', noCam(first));
+        : tile(v.peer, v.name || '?', v.peer, false, noCam(first) ? ct('cl.vid.camOff', 'Kamera mati') : '', '', noCam(first), !!first && first.scr === true);
       return `<div class="cvh"><span class="cnm">${h.esc(group ? ct('cl.group', 'Panggilan grup') : (v.name || '?'))}</span><span class="cst" id="calltime" data-phase="${v.phase}">${status}</span></div>`
+        + viewInviteHtml(h, legs.filter((x) => x.scr === true).map((x) => x.peer))
         + `<div class="cvg${group ? ' grid' : ''}${fk ? ' focus' : ''}" data-n="${Math.min(keys.length, CALL_MAX_PEERS)}" role="group" aria-label="${ct('cl.vid.aria', 'Video')}">${others}${tile('me', ct('chat.you', 'Kamu'), h.meId || '', true, v.camOff ? ct('cl.vid.camOff', 'Kamera mati') : '', '', !!v.camOff)}</div>`
         + `${vob ? `<div class="cob">${vob}<span>${first.deafened ? ct('cl.deafShort', 'Tidak mendengar') : ct('cl.micOff', 'Mik dimatikan')}</span></div>` : ''}<div class="cbtns">${tog}${main}</div>${ns}${pk}`;
     }
@@ -1420,11 +1748,12 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
       const ck = chanCams(v);
       if (ck.length) {
         const fk = h.focus && ck.includes(h.focus) ? h.focus : '';
-        const ctile = (key, name, who, me, badge) => `<div class="cvt${me ? ' me' : ''}${fk === key ? ' big' : ''}" data-vkey="${h.esc(key)}" data-cact="focus" data-vfocus="${h.esc(key)}" role="button" tabindex="0" aria-label="${ct('cl.vid.zoom', 'Perbesar video {name}', { name: h.esc(name) })}"><span class="cvp">${h.avatar(who)}</span><span class="cva">${h.avatar(who)}</span><span class="cvn">${h.esc(name)}${badge || ''}</span>${fk === key ? `<button type="button" class="cvx" data-cact="unfocus" aria-label="${ct('cl.vid.grid', 'Kembali ke grid')}" title="${ct('cl.vid.grid', 'Kembali ke grid')}">${(h.icons && h.icons.shrink) || '⤡'}</button>` : ''}</div>`;
-        const tiles = legs.filter((x) => x.cam === true && x.state === 'active').map((x) => ctile(x.peer, x.name || '?', x.peer, false, stateBadge(x, h))).join('')
+        const ctile = (key, name, who, me, badge, scr) => `<div class="cvt${me ? ' me' : ''}${fk === key ? ' big' : ''}${h.viewKey === key && fk === key ? ' viewer' : ''}" data-vkey="${h.esc(key)}" data-cact="focus" data-vfocus="${h.esc(key)}" role="button" tabindex="0" aria-label="${ct('cl.vid.zoom', 'Perbesar video {name}', { name: h.esc(name) })}"><span class="cvp">${h.avatar(who)}</span><span class="cva">${h.avatar(who)}</span><span class="cvn">${h.esc(name)}${badge || ''}</span>${fk === key ? exitBtn(key, h) : ''}${scr === true ? fullBtn(key, h) : ''}</div>`;
+        const tiles = legs.filter((x) => x.cam === true && x.state === 'active').map((x) => ctile(x.peer, x.name || '?', x.peer, false, stateBadge(x, h), x.scr === true)).join('')
           + (ck.includes('me') ? ctile('me', ct('chat.you', 'Kamu'), h.meId || '', true, '') : '');
         // Daftar peserta di bawah kartu dihapus (tidak penting): siapa yang ada cukup dari kartu + jumlah orang di header; foto profil ada di pojok kiri atas tiap kartu.
         return `<div class="cvh"><span class="cnm">${h.esc(v.vc.name || 'Channel')}</span><span class="cst" id="calltime" data-phase="${v.phase}">${status}</span><span class="cst cvk">${tnc('cl.vc.people', others + 1, 'Channel suara · {count} orang')}</span></div>`
+          + viewInviteHtml(h, legs.filter((x) => x.scr === true && x.cam === true && x.state === 'active').map((x) => x.peer))
           + `<div class="cvg chv${fk ? ' focus' : ''}" data-n="${ck.length}" role="group" aria-label="${ct('cl.vid.aria', 'Video')}">${tiles}</div>`
           + `<div class="cbtns">${tog}${main}</div>${ns}`;
       }
@@ -1447,5 +1776,5 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     return `<div class="cav" data-peer="${h.esc(v.peer || '')}">${h.avatar(v.peer)}</div><div class="cnm">${h.esc(v.name || '?')}</div><div class="cst" id="calltime" data-phase="${v.phase}">${status}</div>${ob ? `<div class="cob">${ob}<span>${one.deafened ? ct('cl.deafShort', 'Tidak mendengar') : ct('cl.micOff', 'Mik dimatikan')}</span></div>` : ''}<div class="cbtns">${tog}${main}</div>${ns}${pk}`;
   }
 
-  return { Controller, NoiseGate, NOISE_MODES, NOISE_DEFAULT, audioConstraints, videoConstraints, sdpHasVideo, sdpVideoKind, fmtDur, durHuman, callLabel, callMembers, endText, supported, browserRtc, nativeBridge, makeNative, makeRinger, pickPip, levelMeter, PIP_DWELL_MS, overlayHtml, canMinimize, videoView, inviteCandidates, inviteFailText, legText, roomCount, CALL_MAX_PEERS, DISCONNECT_GRACE_MS, SYNC_GUARD_MS };
+  return { Controller, NoiseGate, NOISE_MODES, NOISE_DEFAULT, audioConstraints, videoConstraints, sdpHasVideo, sdpVideoKind, fmtDur, durHuman, callLabel, callMembers, endText, supported, browserRtc, nativeBridge, makeNative, makeRinger, pickPip, levelMeter, PIP_DWELL_MS, overlayHtml, canMinimize, videoView, vzClamp, vzGesture, vzDoubleTap, vzCss, VZ_MAX, inviteCandidates, inviteFailText, legText, roomCount, CALL_MAX_PEERS, DISCONNECT_GRACE_MS, SYNC_GUARD_MS };
 });

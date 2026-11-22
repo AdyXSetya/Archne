@@ -1,10 +1,11 @@
 'use strict';
-const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, Notification, protocol } = require('electron');
+const { app, BrowserWindow, WebContentsView, ipcMain, dialog, shell, Notification, protocol, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { Core } = require('./src/archne-core');
 const { register } = require('./src/archne-ipc');
-const { allowMedia } = require('./src/archne-permissions');
+const { allowPermission } = require('./src/archne-permissions');
+const { createScreenPicker } = require('./src/archne-screenpick');
 const { createWsProxy } = require('./src/archne-wsproxy');
 const { createWebBrowser } = require('./src/archne-webbrowser');
 const I18N = require('./src/core/archne-i18n-node'); // i18n (E10): judul dialog native dan notifikasi memakai bahasa pengaturan, dibaca SAAT dipakai
@@ -27,7 +28,7 @@ process.on('unhandledRejection', (e) => log('unhandledRejection ' + (e && e.stac
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 
-let win, core, ipc;
+let win, core, ipc, screen;
 
 // Folder terima Kirim Langsung bawaan di Windows: <drive sistem>\file_transfer (mis. C:\file_transfer). Gagal dibuat/ditulisi -> null (Core memakai <unduhan>/file_transfer).
 function directDefaultDir() {
@@ -75,8 +76,10 @@ async function boot() {
   try { wsProxy = createWsProxy({ WebSocket: require('ws'), send: (ev) => send('wsev', ev), log }); } catch (e) { log('wsproxy tidak tersedia: ' + e.message); }
   // Peramban dalam aplikasi (v0.25.1): tautan web di chat dibuka di WebContentsView dengan bilah alat dari renderer
   const web = createWebBrowser({ WebContentsView, getWindow: () => win, shell, send: (st) => send('webstate', st), log });
+  // Berbagi layar (v0.32.0 Fase C): pemilih sumber milik Archne sendiri (src/archne-screenpick.js); pengguna harus memilih layar/jendela, tanpa audio sistem
+  screen = createScreenPicker({ desktopCapturer, getWindow: () => win, rendererDir, send, log });
   ipc = register({
-    ipcMain, core, log, shell, wsProxy, web,
+    ipcMain, core, log, shell, wsProxy, web, screen,
     send,
     pickFiles: async () => {
       const r = await dialog.showOpenDialog(win, { title: I18N.tr('e.native.sendFile', null, 'Kirim berkas'), properties: ['openFile', 'multiSelections'] });
@@ -111,10 +114,12 @@ async function boot() {
     // autoplayPolicy: nada dering dan audio lawan bicara harus bisa berbunyi tanpa menunggu klik (panggilan masuk datang tiba-tiba)
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required', backgroundThrottling: false },
   });
-  // Hanya mikrofon dan hanya untuk jendela ini; izin lain ditolak.
+  // Hanya mikrofon/kamera dan tangkap layar (display-capture), hanya untuk jendela ini; izin lain ditolak.
   const ses = win.webContents.session;
-  ses.setPermissionRequestHandler((wc, permission, cb, details) => cb(wc === win.webContents && allowMedia(permission, { url: details && details.requestingUrl, mediaTypes: details && details.mediaTypes }, rendererDir)));
-  ses.setPermissionCheckHandler((wc, permission, origin, details) => wc === win.webContents && allowMedia(permission, { url: details && details.requestingUrl, origin, mediaType: details && details.mediaType }, rendererDir));
+  ses.setPermissionRequestHandler((wc, permission, cb, details) => cb(wc === win.webContents && allowPermission(permission, { url: details && details.requestingUrl, mediaTypes: details && details.mediaTypes }, rendererDir)));
+  ses.setPermissionCheckHandler((wc, permission, origin, details) => wc === win.webContents && allowPermission(permission, { url: details && details.requestingUrl, origin, mediaType: details && details.mediaType }, rendererDir));
+  // Layar yang dibagikan hanya lahir dari sini. Tanpa useSystemPicker: dialog Archne (C.2) dipakai di semua sistem supaya perilakunya sama (pemilih sistem setahu kami hanya macOS; belum dicek untuk Electron 45).
+  ses.setDisplayMediaRequestHandler((request, callback) => { screen.handler(request, callback).catch((e) => { log('display media gagal: ' + (e && e.message)); try { callback({}); } catch {} }); });
   win.setMenuBarVisibility(false);
   win.loadFile(path.join(rendererDir, 'archne-index.html'));
   // Electron 35+: argumen tunggal berisi {level, message, ...}; bentuk lama (e, level, msg) sudah deprecated. Dua-duanya ditangani.

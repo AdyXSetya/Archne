@@ -7,7 +7,8 @@
 //   post/<id>    JSON postingan persis seperti di store (termasuk priv, nodl, daftar media/files/videos)
 //   media/<id>   byte gambar     file/<id>   byte lampiran     video/<id>   byte video      (id = id berkas di store; HEX16, unik per postingan)
 //   comments     (hanya bila opts.comments) JSON { v:1, owner, map:{ postId:[komentar] }, rm:['postId:cid'] }; tanda tangan komentar menutup id pemilik, jadi hanya sah bagi identitas yang sama (lihat impor)
-//   meta         { kind:'archne-pages', fmt:1, owner, posts:[id ...] (urutan tampil, terbaru dulu), counts:{ posts, media, files, videos, bytes }, comments?:{ items, tombs } }
+//   reactions    (5h; bawaan ikut bila ada isinya, opts.reactions === false = tidak) JSON { v:1, owner, posts:{ id+id:{ by:{ e, ts } } }, cmts:{ postId+cid:{ by:{ e, ts } } } }; reaksi komentar hanya ikut bila komentarnya ikut
+//   meta         { kind:'archne-pages', fmt:1, owner, posts:[id ...] (urutan tampil, terbaru dulu), counts:{ posts, media, files, videos, bytes }, comments?:{ items, tombs }, reactions?:{ posts, cmts } (jumlah register) }
 // SATU-SATUNYA daftar yang sah adalah meta.posts: entri di luar daftar itu (sisa postingan yang gagal di tengah) diabaikan oleh impor (5d-3/4).
 //
 // Postingan yang tidak bisa diekspor utuh (dihapus saat ekspor berjalan, berkas lampiran hilang / ukurannya tak cocok / berubah saat disalin) DILEWATI dan
@@ -19,6 +20,8 @@ const { ArcWriter, ArcError } = require('./archne-pagearc');
 const KIND = 'archne-pages';
 const HEX16 = /^[0-9a-f]{16}$/;
 const CMT_ENTRY_MAX = 64 * 1024 * 1024; // batas keras entri komentar (CMT_STORE_MAX komentar x ~4,5 KB terburuk)
+const RX_ENTRY_MAX = 8 * 1024 * 1024; // batas keras entri reaksi (maks 2 x 5000 register x ~100 B, dengan ruang lega)
+const countRx = (m) => { let n = 0; for (const k of Object.keys(m)) n += Object.keys(m[k]).length; return n; };
 const sizeOf = (p) => { let n = 0; for (const k of ['media', 'files', 'videos']) if (p[k]) for (const e of p[k]) n += e.size; return n; };
 
 // store: PageStore. file: tujuan. opts: { ids (subset; bawaan semua), owner, signal, onProgress({ posts, total, bytes, totalBytes, id }) }
@@ -77,20 +80,37 @@ async function exportPages(store, file, opts) {
       for (const a of att) blobs.set(a.name, a.size);
       say(id);
     }
-    let cm = null;
+    let cm = null, dumped = null;
     if (opts.comments) {
-      const d = store.cmt.dump(new Set(posts));
+      const d = store.cmt.dump(new Set(posts)); dumped = d;
       let items = 0; for (const k of Object.keys(d.map)) items += d.map[k].length;
       const buf = Buffer.from(JSON.stringify({ v: 1, owner: store.cmt.owner, map: d.map, rm: d.rm }));
       if (buf.length > CMT_ENTRY_MAX) throw new ArcError('limit', 'komentar terlalu besar untuk satu arsip');
       await w.addBuffer('comments', buf);
       cm = { items, tombs: d.rm.length };
     }
+    // 5h: reaksi postingan + reaksi komentar (hanya untuk postingan / komentar yang ikut). Tidak ada isi = tidak ada entri.
+    let rxm = null;
+    if (opts.reactions !== false) {
+      const inSet = new Set(posts);
+      const pr = store.rx && typeof store.rx.dump === 'function' ? store.rx.dump((id) => inSet.has(id)) : {};
+      let cr = {};
+      if (dumped && store.crx && typeof store.crx.dump === 'function') {
+        const live = new Set(); for (const pid of Object.keys(dumped.map)) for (const c of dumped.map[pid]) live.add(pid + c.id);
+        cr = store.crx.dump((pid, cid) => live.has(pid + cid));
+      }
+      rxm = { posts: countRx(pr), cmts: countRx(cr) };
+      if (rxm.posts || rxm.cmts) {
+        const buf = Buffer.from(JSON.stringify({ v: 1, owner, posts: pr, cmts: cr }));
+        if (buf.length > RX_ENTRY_MAX) throw new ArcError('limit', 'reaksi terlalu besar untuk satu arsip');
+        await w.addBuffer('reactions', buf);
+      } else rxm = null;
+    }
     const counts = { posts: posts.length, media: 0, files: 0, videos: 0, bytes: 0 };
     for (const [n, sz] of blobs) { counts[n.startsWith('media/') ? 'media' : n.startsWith('file/') ? 'files' : 'videos']++; counts.bytes += sz; }
-    const fin = await w.finish(Object.assign({ kind: KIND, fmt: 1, owner, posts, counts }, cm ? { comments: cm } : {}));
-    return { file, size: fin.size, posts: posts.length, media: counts.media, files: counts.files, videos: counts.videos, bytes: counts.bytes, skipped, comments: cm };
+    const fin = await w.finish(Object.assign({ kind: KIND, fmt: 1, owner, posts, counts }, cm ? { comments: cm } : {}, rxm ? { reactions: rxm } : {}));
+    return { file, size: fin.size, posts: posts.length, media: counts.media, files: counts.files, videos: counts.videos, bytes: counts.bytes, skipped, comments: cm, reactions: rxm };
   } catch (e) { await w.abort(); throw e; }
 }
 
-module.exports = { exportPages, KIND, CMT_ENTRY_MAX };
+module.exports = { exportPages, KIND, CMT_ENTRY_MAX, RX_ENTRY_MAX };

@@ -216,7 +216,7 @@ function timers() {
     // hello + caps
     let e = await env(val('ok'));
     e.frame.onload();
-    assert.deepStrictEqual(e.sent()[0], [{ archne: 'native-caps', audio: true, pick: false }, ORIGIN], 'iframe selesai dimuat: kabari bahwa audio tersedia (pick hanya bila inti memberi folder dxout), hanya ke origin iframe');
+    assert.deepStrictEqual(e.sent()[0], [{ archne: 'native-caps', audio: true, pick: false, screen: false }, ORIGIN], 'iframe selesai dimuat: kabari bahwa audio tersedia (pick hanya bila inti memberi folder dxout), hanya ke origin iframe');
     await e.post({ archne: 'native', action: 'hello', id: 0 });
     assert.strictEqual(e.sent().filter((x) => x[0].archne === 'native-caps').length, 2);
 
@@ -261,7 +261,7 @@ function timers() {
     // Kirim Langsung dari HP: pemilih berpath (ArchneDownloads access / askAccess / pick)
     const DX = '/data/user/0/com.xyraori.archne/files/archne/data/dxout', dl = (e) => e.plug('ArchneDownloads'), lastPick = (e) => { const r = e.sent().filter((x) => x[0].archne === 'native-pick'); return r.length ? r[r.length - 1] : null; };
     e = await env(val('ok'), { dxout: DX }); e.frame.onload();
-    assert.deepStrictEqual(e.sent()[0][0], { archne: 'native-caps', audio: true, pick: true }, 'caps: pemilih berpath tersedia setelah inti memberi folder dxout');
+    assert.deepStrictEqual(e.sent()[0][0], { archne: 'native-caps', audio: true, pick: true, screen: false }, 'caps: pemilih berpath tersedia setelah inti memberi folder dxout');
     e = await env((p, act) => (act === 'access' ? { value: 'ok' } : act === 'pick' ? { paths: ['/storage/emulated/0/DCIM/a.jpg', 7, '/storage/1234-ABCD/b.mkv'] } : {}), { dxout: DX });
     await e.post({ archne: 'native', action: 'dxpick', id: 21, job: 'xj1' });
     assert.deepStrictEqual(dl(e).map((x) => [x.act, x.args]), [['access', {}], ['pick', { root: DX, job: 'xj1' }]], 'izin ada: langsung memilih, folder dxout dari inti (bukan dari UI)');
@@ -316,7 +316,7 @@ function timers() {
     assert(/MODE_IN_COMMUNICATION/.test(java) && /setMode\(prevMode\)/.test(java) && /protected void handleOnDestroy\(\) \{ end\(\); \}/.test(java), 'mode panggilan selalu dikembalikan (end, handleOnDestroy)');
     assert(/Build\.VERSION\.SDK_INT >= 31/.test(java) && /setCommunicationDevice/.test(java) && /setSpeakerphoneOn/.test(java), 'rute speaker: API 31+ dan di bawahnya');
 
-    assert(/FOREGROUND_SERVICE_MICROPHONE/.test(mf) && /foregroundServiceType="dataSync\|microphone"/.test(mf));
+    assert(/FOREGROUND_SERVICE_MICROPHONE/.test(mf) && /foregroundServiceType="dataSync\|microphone\|mediaProjection"/.test(mf));
     const svc = read(...JD, 'ArchneService.java');
     assert(/"call"\.equals\(ev\)/.test(svc) && /CATEGORY_CALL/.test(svc) && /FOREGROUND_SERVICE_TYPE_MICROPHONE/.test(svc) && /FLAG_INSISTENT/.test(svc));
     assert(/clearCall\(/.test(read(...JD, 'ArchneBackground.java')), 'notifikasi panggilan dihapus saat aplikasi dibuka');

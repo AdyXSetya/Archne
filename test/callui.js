@@ -342,7 +342,7 @@ function mk(opts) {
       return async (...a) => { calls.push([n, ...a]); return { ok: true }; };
     } });
     FakePC.all = [];
-    const win = { api, LanCall: LC, RTCPeerConnection: FakePC, MediaStream: function (t) { this.t = t; }, Audio: function () { this.play = () => Promise.resolve(); this.pause = () => {}; },
+    const win = { api, addEventListener: () => {}, LanCall: LC, RTCPeerConnection: FakePC, MediaStream: function (t) { this.t = t; }, Audio: function () { this.play = () => Promise.resolve(); this.pause = () => {}; },
       navigator: { mediaDevices: { getUserMedia: async () => mkStream() } } };
     const ctx = { window: win, document: doc, CSS: { escape: (s) => s }, FileCard: require('../renderer/archne-filecard'), Avatar: require('../renderer/archne-avatar'), confirm: () => true, alert: () => {}, console, setInterval: () => 0, setTimeout, clearTimeout, Date, parseInt, Set, Math, JSON };
     vm.createContext(ctx);
@@ -381,7 +381,7 @@ function mk(opts) {
 
     // tanpa dukungan WebRTC (mis. peramban lama): fitur mati total, UI lain tidak terpengaruh
     const els2 = {}; const doc2 = Object.assign({}, doc, { getElementById: (id) => els2[id] || (els2[id] = mkEl(id)) });
-    const ctx2 = Object.assign({}, ctx, { document: doc2, window: { api, LanCall: LC, navigator: {} } });
+    const ctx2 = Object.assign({}, ctx, { document: doc2, window: { api, addEventListener: () => {}, LanCall: LC, navigator: {} } });
     vm.createContext(ctx2); vm.runInContext(inline, ctx2); await flush(); await flush();
     vm.runInContext("pickChat('peer1')", ctx2);
     assert(!els2.head.innerHTML.includes('callbtn'));

@@ -43,7 +43,7 @@ const ok = (n) => { pass++; console.log('  OK  ' + n); };
     if (['onProgress', 'onUpdate', 'onRemoved', 'onCall'].includes(n)) return () => {};
     return async () => ({ ok: true });
   } });
-  const win = { api, LanCall: LC, RTCPeerConnection: function () {}, MediaStream: function () {}, Audio: function () { this.play = () => Promise.resolve(); this.pause = () => {}; }, navigator: { mediaDevices: { getUserMedia: async () => ({}) } } };
+  const win = { api, addEventListener: () => {}, LanCall: LC, RTCPeerConnection: function () {}, MediaStream: function () {}, Audio: function () { this.play = () => Promise.resolve(); this.pause = () => {}; }, navigator: { mediaDevices: { getUserMedia: async () => ({}) } } };
   const ctx = { window: win, document: doc, CSS: { escape: (s) => s }, FileCard: require('../renderer/archne-filecard'), Avatar: require('../renderer/archne-avatar'), confirm: () => true, alert: () => {}, console, setInterval: () => 0, setTimeout, clearTimeout, Date, parseInt, Set, Math, JSON };
   vm.createContext(ctx);
   const now = Date.now();

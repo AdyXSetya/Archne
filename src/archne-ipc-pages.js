@@ -30,7 +30,7 @@
 // Event 'pgnew' ke renderer (5b-3a): { peerId, on:boolean } hanya dua bidang ini, SATU per perubahan status lencana pemilik itu. Event cacat (peer bukan 16 heks, on bukan boolean persis) tidak disiarkan. Renderer mengambil pgNewList saat mulai / tersambung ulang, lalu mengikuti event.
 // Moderasi komentar (5c-1), kanal pemilik (tanpa peerId: hanya postingan MILIK SENDIRI; tidak ada jalan untuk menyentuh halaman orang lain): pgCmtRemove(postId, cid) -> { ok:true, removed:boolean } (removed false = postingan / komentar tidak ada; tak dibedakan). id cacat = bad tanpa menyentuh Core. Galat: cmtErr (gagal tulis: ENOSPC = "Penyimpanan penuh", lainnya pesan umum tanpa jalur). Lokal saja, tidak ada event.
 // Cadangan halaman (5d-6), kanal pemilik; dialog berkas ada di proses utama (deps.pickSave / deps.pickArc), jadi renderer TIDAK PERNAH mengirim atau menerima jalur berkas (hanya nama berkas untuk ditampilkan):
-//   pgArcExport({ comments?: boolean }) -> { ok:true, job:null } (dialog dibatalkan) | { ok:true, job, name }; mengekspor SEMUA postingan (+ komentar bila comments === true) ke berkas pilihan pemilik (.archpg), di latar.
+//   pgArcExport({ comments?: boolean }) -> { ok:true, job:null } (dialog dibatalkan) | { ok:true, job, name }; mengekspor SEMUA postingan (+ komentar bila comments === true; reaksi postingan dan komentar ikut bila ada) ke berkas pilihan pemilik (.archpg), di latar.
 //   pgArcOpen() -> { ok:true, token:null } (dibatalkan) | { ok:true, token, name, summary }; memilih arsip dan memeriksanya TANPA menulis apa pun (5d-3, tanpa membaca isi lampiran). token berlaku untuk SATU pgArcImport.
 //   pgArcImport(token, { comments?: boolean }) -> { ok:true, job }; comments === false = komentar tidak dipulihkan (bawaan: dipulihkan bila identitas sama). pgArcCancel(job) -> { ok:true, cancelled }. pgArcState() -> { ok:true, run: null | { job, kind, ... } }.
 //   Hanya SATU pekerjaan arsip pada satu waktu (code 'busy'). Tanpa dialog (HTTP / Android): code 'nodialog'. Event 'pgarc': { job, kind:'export'|'import', phase:'progress', posts, total, bytes, totalBytes } lalu SATU akhir
@@ -89,18 +89,29 @@ const wireCm = (c) => { // hanya bidang yang dikenal, nilai dipaksa ke bentuk am
   for (const k of CM_NUMS) if (c[k] !== undefined) o[k] = num(c[k]);
   return o;
 };
+const RX_NUMS = ['posts', 'cmts', 'added', 'updated', 'same', 'stale', 'bad', 'orphan', 'full'];
+const wireRxN = (c) => { const o = {}; if (c && typeof c === 'object') for (const k of RX_NUMS) if (c[k] !== undefined) o[k] = num(c[k]); return o; };
+const wireRx = (c) => { // 5h: reaksi (postingan + komentar); hanya bidang yang dikenal
+  if (!c || typeof c !== 'object') return { status: 'none' };
+  const o = Object.assign({ status: ['none', 'pending', 'skipped', 'bad', 'done', 'ok'].includes(c.status) ? c.status : 'none' }, wireRxN(c));
+  if (typeof c.why === 'string' && /^[a-z]{2,8}$/.test(c.why)) o.why = c.why;
+  if (c.post) o.post = wireRxN(c.post);
+  if (c.cmt) o.cmt = wireRxN(c.cmt);
+  return o;
+};
 const sumReport = (r, name) => ({
   name, size: num(r.size), created: num(r.created), ownerMatch: r.ownerMatch === true ? true : r.ownerMatch === false ? false : null,
   counts: { total: num(r.counts.total), new: num(r.counts.new), same: num(r.counts.same), conflict: num(r.counts.conflict), bad: num(r.counts.bad) },
   why: { conflict: tally(r.posts.filter((x) => x.status === 'conflict')), bad: tally(r.posts.filter((x) => x.status === 'bad')) },
   blobs: { new: num(r.blobs.new), reuse: num(r.blobs.reuse), bytesNew: num(r.blobs.bytesNew) }, extra: num(r.extra),
   comments: Object.assign(wireCm(r.comments), { present: !!(r.comments && r.comments.present), restorable: !!(r.comments && r.comments.restorable), plan: r.comments && r.comments.plan ? wireCm(Object.assign({ status: 'ok' }, r.comments.plan)) : null }),
+  reactions: Object.assign(wireRx(r.reactions), { present: !!(r.reactions && r.reactions.present), restorable: !!(r.reactions && r.reactions.restorable), plan: r.reactions && r.reactions.plan ? wireRxN(r.reactions.plan) : null }),
 });
-const sumExport = (r, name) => ({ name, size: num(r.size), posts: num(r.posts), media: num(r.media), files: num(r.files), videos: num(r.videos), bytes: num(r.bytes), skipped: r.skipped.length, skippedWhy: tally(r.skipped), comments: r.comments ? { items: num(r.comments.items), tombs: num(r.comments.tombs) } : null });
+const sumExport = (r, name) => ({ name, size: num(r.size), posts: num(r.posts), media: num(r.media), files: num(r.files), videos: num(r.videos), bytes: num(r.bytes), skipped: r.skipped.length, skippedWhy: tally(r.skipped), comments: r.comments ? { items: num(r.comments.items), tombs: num(r.comments.tombs) } : null, reactions: r.reactions ? { posts: num(r.reactions.posts), cmts: num(r.reactions.cmts) } : null });
 const sumImport = (r) => ({
   imported: r.imported.length, same: r.same.length, conflict: r.conflict.length, bad: r.bad.length, failed: r.failed.length, aborted: r.aborted === true, total: num(r.total),
   why: { conflict: tally(r.conflict), bad: tally(r.bad), failed: tally(r.failed) }, blobs: { written: num(r.blobs.written), reuse: num(r.blobs.reuse), bytes: num(r.blobs.bytes) },
-  ownerMatch: r.ownerMatch === true ? true : r.ownerMatch === false ? false : null, comments: wireCm(r.comments),
+  ownerMatch: r.ownerMatch === true ? true : r.ownerMatch === false ? false : null, comments: wireCm(r.comments), reactions: wireRx(r.reactions),
 });
 const fail = (e) => ({ ok: false, err: errText(e), code: e && e.code });
 const bad = (m) => ({ ok: false, err: m || 'Masukan tidak valid', code: 'bad' });

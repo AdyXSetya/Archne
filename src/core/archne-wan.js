@@ -18,7 +18,7 @@ module.exports = {
     this._turn = Turn.createTurn(this.opts.turn || {}); // konfigurasi ICE lintas jaringan; kredensial hanya di Core
   },
   _wanLoad() { // dari _loadStore: konfigurasi TURN tersimpan rusak dibuang
-    if (this.store.turn) { try { this._turn.set(this.store.turn); } catch { delete this.store.turn; } }
+    if (this.store.turn) { try { this._turn.set(this.store.turn); this._turn.ice().catch(() => {}); } catch { delete this.store.turn; } } // pemanasan: kredensial sudah siap saat panggilan pertama
   },
   _wanStop() { // dari stop()
     try { if (this._rtc) { if (typeof this._rtc.close === 'function') this._rtc.close(); this._rtc.onIncoming = null; } } catch {}

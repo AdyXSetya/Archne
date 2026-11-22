@@ -6,12 +6,14 @@
 // 5d-5: komentar + nisan (entri `comments`) HANYA dipulihkan bila id pemilik arsip = id pemilik store (tanda tangan komentar menutup id pemilik; di identitas lain semuanya gagal cmtVerify).
 // Beda / tidak diketahui = postingan tetap diimpor, komentar dilaporkan tidak dibawa (comments.status 'skipped', why 'owner'). Komentar hanya untuk postingan yang berstatus new / same;
 // tiap komentar diverifikasi ulang (PageCmt.merge), yang gagal dibuang dan dihitung. Nisan dari arsip tidak pernah menghapus komentar yang hidup, dan nisan lokal menang atas komentar arsip.
+// 5h: reaksi (entri `reactions`) mengikuti aturan yang sama: hanya dipulihkan bila pemilik arsip = pemilik store (pemilik adalah satu-satunya pencatat reaksi, dan arsip tidak dipercaya),
+// dan hanya untuk postingan new / same. Digabung per register (terbaru menang), tidak pernah mencabut reaksi yang ada. Reaksi komentar hanya untuk komentar yang ada di store sesudah tahap komentar.
 // Tanpa ?. / ?? (Node 12 di Android).
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { ArcReader, ArcError } = require('./archne-pagearc');
-const { KIND, CMT_ENTRY_MAX } = require('./archne-pageexport');
+const { KIND, CMT_ENTRY_MAX, RX_ENTRY_MAX } = require('./archne-pageexport');
 const { CMT_STORE_MAX, CMT_RM_MAX } = require('./archne-pagecmt');
 const { cleanText, normMedia, normFiles, normVideos, normAttach, WIRE_TEXT_MAX, PAGE_PRIV, COPY_CHUNK } = require('./archne-pagestore');
 const { sniffImage, pixelsOk, sniffAv, playMime } = require('./archne-mediacheck');
@@ -100,6 +102,20 @@ async function loadComments(rd, signal) {
   return { map: j.map, rm: j.rm, items, tombs: j.rm.length };
 }
 
+// Entri `reactions` arsip -> { posts, cmts, np, nc } (bentuk saja; isi dibersihkan PageRx.merge). Melempar fail(why) bila tidak sah / tidak cocok dengan meta.
+async function loadReactions(rd) {
+  const m = rd.meta, info = rd.info('reactions');
+  if (!m.reactions || !info) throw fail(info ? 'nometa' : 'norx');
+  let j;
+  try { j = JSON.parse((await rd.readBuffer('reactions', RX_ENTRY_MAX)).toString('utf8')); } catch (e) { if (e instanceof ArcError && e.code === 'abort') throw e; throw fail(e instanceof ArcError && (e.code === 'limit' || e.code === 'hash') ? e.code : 'rx'); }
+  const isObj = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
+  if (!isObj(j) || j.v !== 1 || j.owner !== m.owner || !isObj(j.posts) || !isObj(j.cmts)) throw fail('rx');
+  const cnt = (o) => { let n = 0; for (const k of Object.keys(o)) { if (!isObj(o[k])) throw fail('rx'); n += Object.keys(o[k]).length; } return n; };
+  const np = cnt(j.posts), nc = cnt(j.cmts);
+  if (np !== m.reactions.posts || nc !== m.reactions.cmts) throw fail('count');
+  return { posts: j.posts, cmts: j.cmts, np, nc };
+}
+
 // store: PageStore. file: arsip. opts: { verify (bawaan true: baca dan hash SEMUA lampiran yang dirujuk), signal, onProgress({ posts, total, bytes, totalBytes }) }
 // Melempar ArcError untuk arsip yang rusak secara keseluruhan (kode 'bad' / 'hash' / 'abort'); cacat per postingan dilaporkan di posts[].status = 'bad'.
 async function inspectArchive(store, file, opts) {
@@ -113,6 +129,7 @@ async function inspectArchive(store, file, opts) {
     if (m.owner !== null && !HEX16.test(String(m.owner))) throw new ArcError('bad', 'meta: pemilik tidak valid');
     if (!Array.isArray(m.posts) || m.posts.length > POSTS_MAX || m.posts.some((i) => !HEX16.test(String(i))) || new Set(m.posts).size !== m.posts.length) throw new ArcError('bad', 'meta: daftar postingan tidak valid');
     if (m.comments !== undefined && (!m.comments || typeof m.comments !== 'object' || !Number.isSafeInteger(m.comments.items) || m.comments.items < 0 || !Number.isSafeInteger(m.comments.tombs) || m.comments.tombs < 0)) throw new ArcError('bad', 'meta: komentar tidak valid');
+    if (m.reactions !== undefined && (!m.reactions || typeof m.reactions !== 'object' || !Number.isSafeInteger(m.reactions.posts) || m.reactions.posts < 0 || !Number.isSafeInteger(m.reactions.cmts) || m.reactions.cmts < 0)) throw new ArcError('bad', 'meta: reaksi tidak valid');
     const me = opts.owner != null ? opts.owner : (store.cmt ? store.cmt.owner : null);
     const posts = [], listed = new Set(), blobCache = new Map(); // blobCache: nama -> { ok, why }
     let totalBytes = 0, doneBytes = 0;
@@ -198,12 +215,26 @@ async function inspectArchive(store, file, opts) {
         }
       } catch (e) { if (e instanceof ArcError && e.code === 'abort') throw e; if (!e || !e.why) throw e; cm.status = 'bad'; cm.why = e.why; }
     }
+    // reaksi (5h): rencana untuk reaksi postingan dihitung persis seperti tahap tulis (dry); reaksi komentar bergantung pada komentar yang berhasil dipulihkan, jadi hanya dihitung jumlahnya
+    const rx = { present: false, status: 'none', why: null, posts: 0, cmts: 0, restorable: false, plan: null };
+    if (m.reactions !== undefined || rd.has('reactions')) {
+      rx.present = true; listed.add('reactions');
+      try {
+        const d = await loadReactions(rd);
+        rx.status = 'ok'; rx.posts = d.np; rx.cmts = d.nc;
+        rx.restorable = ownerMatch === true && !!store.rx && !!store.cmt && store.cmt.owner === m.owner;
+        if (rx.restorable) {
+          const el = new Set(); for (const r of posts) if (r.status === 'new' || r.status === 'same') el.add(r.id);
+          rx.plan = store.rx.merge(d.posts, { dry: true, has: (id) => el.has(id) });
+        }
+      } catch (e) { if (e instanceof ArcError && e.code === 'abort') throw e; if (!e || !e.why) throw e; rx.status = 'bad'; rx.why = e.why; }
+    }
     const counts = { total: posts.length, new: 0, same: 0, conflict: 0, bad: 0 };
     for (const r of posts) counts[r.status]++;
     let bytesNew = 0; for (const sz of newBlobs.values()) bytesNew += sz;
     let extra = 0; for (const e of rd.entries) if (!listed.has(e.n)) extra++;
     return {
-      owner: m.owner, ownerMatch, comments: cm, created: rd.created, verified: verify,
+      owner: m.owner, ownerMatch, comments: cm, reactions: rx, created: rd.created, verified: verify,
       posts, counts, blobs: { new: newBlobs.size, reuse: reuse.size, bytesNew }, extra, size: rd.size,
     };
   } finally { await rd.close(); }
@@ -246,18 +277,34 @@ async function restoreComments(store, rd, report, opts, res) {
   return Object.assign({ status: 'done' }, base, store.cmt.merge(d.map, d.rm, { has: (id) => el.has(id) }));
 }
 
+// Tahap reaksi (5h), SESUDAH komentar (reaksi komentar butuh komentarnya sudah ada). -> { status: 'none' | 'skipped' (why: 'abort' | 'off' | 'owner') | 'bad' (why) | 'done', posts, cmts, post: hasil PageRx.merge, cmt: hasil PageCmtRx.merge }
+async function restoreReactions(store, rd, report, opts, res) {
+  const c = report.reactions;
+  if (!c || !c.present) return { status: 'none' };
+  const base = { posts: c.posts, cmts: c.cmts };
+  if (res.aborted) return Object.assign({ status: 'skipped', why: 'abort' }, base);
+  if (opts.reactions === false || !store.rx || !store.crx || !store.cmt) return Object.assign({ status: 'skipped', why: 'off' }, base);
+  if (report.ownerMatch !== true || store.cmt.owner !== report.owner) return Object.assign({ status: 'skipped', why: 'owner' }, base);
+  if (c.status !== 'ok') return { status: 'bad', why: c.why };
+  const d = await loadReactions(rd), el = new Set();
+  for (const id of res.imported.concat(res.same)) if (store.has(id)) el.add(id);
+  const post = store.rx.merge(d.posts, { has: (id) => el.has(id) });
+  const cmt = store.crx.merge(d.cmts, { has: (pid, cid) => el.has(pid) && store.cmt.list(pid).some((x) => x.id === cid) });
+  return Object.assign({ status: 'done' }, base, { post, cmt });
+}
+
 // Tahap TULIS (5d-4). Hanya postingan berstatus 'new' pada pemeriksaan (diulang tepat sebelum menulis) yang masuk; 'same' dilewati, 'conflict' / 'bad' TIDAK PERNAH menimpa apa pun.
 // Tiap postingan atomik: lampiran disalin ke .tmp (hash + jenis isi diperiksa) lalu diganti nama, baru postingan diterima store; gagal di tengah = lampiran yang baru dibuat
 // untuk postingan itu dibuang, postingan lain tidak terpengaruh. Impor bisa diulang (yang sudah masuk jadi 'same'), jadi pembatalan / galat aman.
 // Indeks ditulis SEKALI di akhir (aman dari crash: _load mencocokkan indeks dengan isi folder). opts: { signal, onProgress({ posts, total, bytes, totalBytes }), owner }.
-// -> { imported:[id], same:[id], conflict:[{id,why}], bad:[{id,why}], failed:[{id,why}], aborted, blobs:{ written, reuse, bytes }, ownerMatch, total, comments }  (comments: lihat restoreComments; opts.comments === false = jangan pulihkan komentar)
+// -> { imported:[id], same:[id], conflict:[{id,why}], bad:[{id,why}], failed:[{id,why}], aborted, blobs:{ written, reuse, bytes }, ownerMatch, total, comments }  (comments: lihat restoreComments; opts.comments === false = jangan pulihkan komentar; reactions: lihat restoreReactions; opts.reactions === false = jangan pulihkan reaksi)
 // Galat tak terduga (disk penuh dll.) dilempar dengan e.partial = hasil sementara. Postingan BARU tidak diumumkan ke teman (impor hanya mengisi store).
 async function importArchive(store, file, opts) {
   opts = opts || {};
   if (!store || typeof store.adoptPost !== 'function' || typeof store.blobFile !== 'function') throw new ArcError('bad', 'store tidak valid');
   const sig = opts.signal;
   const report = await inspectArchive(store, file, { verify: false, signal: sig, owner: opts.owner });
-  const res = { imported: [], same: [], conflict: [], bad: [], failed: [], aborted: false, blobs: { written: 0, reuse: 0, bytes: 0 }, ownerMatch: report.ownerMatch, total: report.counts.total, comments: { status: report.comments.present ? 'pending' : 'none' } };
+  const res = { imported: [], same: [], conflict: [], bad: [], failed: [], aborted: false, blobs: { written: 0, reuse: 0, bytes: 0 }, ownerMatch: report.ownerMatch, total: report.counts.total, comments: { status: report.comments.present ? 'pending' : 'none' }, reactions: { status: report.reactions.present ? 'pending' : 'none' } };
   const todo = [];
   for (const r of report.posts) {
     if (r.status === 'new') todo.push(r.id);
@@ -318,6 +365,7 @@ async function importArchive(store, file, opts) {
   if (res.imported.length) { try { store.flush(); } catch (e) { if (!err) err = e; } }
   if (!err && sig && sig.aborted) res.aborted = true;
   if (!err) { try { res.comments = await restoreComments(store, rd, report, opts, res); } catch (e) { err = e; } }
+  if (!err) { try { res.reactions = await restoreReactions(store, rd, report, opts, res); } catch (e) { err = e; } }
   await rd.close();
   if (err) { err.partial = res; throw err; }
   say();

@@ -20,7 +20,7 @@ Android hanya lewat `mobile.bat` (opsi: `-Install`, `-Release`, `-Aab`, `-Abis a
 `./auto.sh` (setup + tes), `./auto.sh serve` (mode peramban), `npm run serve`.
 
 ## Catatan
-- Build Android memakai **Capacitor 8 + Node 24** (tanpa Cordova). Catatan keputusan: `docs/PLANNING.md`.
+- Build Android memakai **Capacitor 8 + Node 24** (tanpa Cordova).
 - Desktop memakai **Electron 45** + electron-builder 26. Sejak Electron 42, `npm install` TIDAK lagi mengunduh binary Electron; setup (`setup.bat`/`auto.js`) mengunduhnya lewat `npx install-electron`, atau otomatis saat `npm start` pertama.
 - `engines: node >= 22.12` hanya untuk mesin build (syarat paket `electron` 45), bukan Node di dalam Electron/HP.
 - `mobile.bat` menjalankan `scripts/mobile-decordova.js` setelah `cap sync`: CLI Capacitor selalu menulis ulang modul "cordova" kosong, dan script ini membuangnya. Bila build Gradle gagal menyebut `capacitor-cordova-android-plugins`, lihat `logs\mobile-decordova.log`.

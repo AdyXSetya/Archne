@@ -93,7 +93,7 @@ function register(deps) {
   h('callInviteAccept', (room) => ({ ok: core.callInviteAccept(cidOf(room)) }));
   h('callInviteDecline', (room) => ({ ok: core.callInviteDecline(cidOf(room)) }));
   h('callLeg', (room, peerId, sdp) => ({ ok: true, cid: core.callLeg(cidOf(room), peerId, sdp) }));
-  h('callMedia', (room, muted, deafened, cam) => { const r = core.callMedia(cidOf(room), muted === true, deafened === true, cam === true || cam === false ? cam : undefined); return r === 'full' ? { ok: false, err: 'cam_full' } : { ok: r === true }; }); // siaran status mik/deafen (4c-2)
+  h('callMedia', (room, muted, deafened, cam, scr) => { const r = core.callMedia(cidOf(room), muted === true, deafened === true, cam === true || cam === false ? cam : undefined, scr === true || scr === false ? scr : undefined); return r === 'full' ? { ok: false, err: 'cam_full' } : { ok: r === true }; }); // siaran status mik/deafen (4c-2)
   h('callLeave', (room) => ({ ok: core.callLeave(cidOf(room)) }));
   // channel voice grup (v0.19.0, langkah 5). Aturan hak akses dan batas dijaga Core (src/archne-vchan.js); di sini hanya bentuk argumen. Audio memakai jalur kaki yang sama dengan panggilan grup (event 'legneed' -> callLeg).
   const str = (v, what) => { if (typeof v !== 'string' || !v || v.length > 64) throw new Error(what + ' tidak valid'); return v; };
@@ -367,6 +367,9 @@ function register(deps) {
   h('webClose', () => (web ? web.close() : { ok: true }));
   ipcMain.handle('webExternal', async (_e, url) => { try { return web ? await web.external(typeof url === 'string' ? url : '') : noWeb(); } catch (e) { return fail(e); } });
 
+  // ---- pemilih layar untuk berbagi layar (v0.32.0 C.4): src/archne-screenpick.js. Renderer hanya menjawab id dari daftar yang dikirim proses utama ----
+  h('screenPickDone', (rid, id, audio) => (deps.screen ? deps.screen.choose(typeof rid === 'string' ? rid.slice(0, 64) : '', typeof id === 'string' ? id.slice(0, 200) : null, audio === true) : { ok: false }));
+
   // ---- Kirim Langsung (v0.24.0): src/archne-ipc-direct.js ----
   const direct = registerDirect({ ipcMain, core, deps, toRenderer, log, settingsOut });
   // ---- Halaman (1c-4a): src/archne-ipc-pages.js ----
@@ -376,7 +379,7 @@ function register(deps) {
     jobs,
     direct,
     // Dipanggil saat aplikasi ditutup: hentikan semua persiapan kirim yang masih berjalan.
-    dispose() { for (const j of jobs.values()) if (j.phase === 'pack') j.ac.abort(); try { direct.dispose(); } catch {} try { pages.dispose(); } catch {} try { bridge.detach(); } catch {} try { deps.wsProxy && deps.wsProxy.dispose(); } catch {} try { deps.web && deps.web.dispose(); } catch {} },
+    dispose() { for (const j of jobs.values()) if (j.phase === 'pack') j.ac.abort(); try { direct.dispose(); } catch {} try { pages.dispose(); } catch {} try { bridge.detach(); } catch {} try { deps.wsProxy && deps.wsProxy.dispose(); } catch {} try { deps.web && deps.web.dispose(); } catch {} try { deps.screen && deps.screen.dispose(); } catch {} },
     bridge,
   };
 }

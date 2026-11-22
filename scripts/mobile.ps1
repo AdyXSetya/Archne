@@ -35,6 +35,8 @@ try {
 
   Set-Location $Mob
   Run-Logged 'npm.cmd ci --no-audit --no-fund' 'mobile-npm.log'
+  # Node hanya boleh dimulai sekali per proses; tanpa tambalan ini plugin crash saat Activity dibuat ulang (lihat scripts/mobile-patch-node.js).
+  Run-Logged "node `"$Root\scripts\mobile-patch-node.js`"" 'mobile-patchnode.log'
   Run-Logged "node `"$Root\scripts\mobile-sync.js`"" 'mobile-sync.log'
   Run-Logged 'npx.cmd cap sync android' 'mobile-capsync.log'
   # cap sync selalu menulis ulang kerangka "cordova" kosong; dibuang di sini (lihat scripts/mobile-decordova.js).

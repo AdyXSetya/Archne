@@ -33,7 +33,7 @@ function mk(opt) {
 }
 const sum = (o) => Object.assign({
   name: 'cadangan.archpg', size: 5000, created: 1700000000000, ownerMatch: true, counts: { total: 5, new: 3, same: 1, conflict: 1, bad: 0 }, why: { conflict: { id: 1 }, bad: {} },
-  blobs: { new: 2, reuse: 0, bytesNew: 4096 }, extra: 0, comments: { status: 'ok', present: true, restorable: true, items: 4, tombs: 1, plan: { status: 'ok', added: 4, tombAdded: 1 } },
+  blobs: { new: 2, reuse: 0, bytesNew: 4096 }, extra: 0, comments: { status: 'ok', present: true, restorable: true, items: 4, tombs: 1, plan: { status: 'ok', added: 4, tombAdded: 1 } }, reactions: { status: 'ok', present: true, restorable: true, posts: 5, cmts: 2, plan: { added: 5, updated: 0 } },
 }, o || {});
 
 (async () => {
@@ -64,7 +64,7 @@ const sum = (o) => Object.assign({
   {
     const t = mk(); await t.open(); await sleep(20); t.click('arc');
     t.api.ret_pgArcExport = async () => ({ ok: true, job: null }); t.click('arcexp'); await sleep(10);
-    assert.strictEqual(t.run('pgArcS.phase'), 'idle', 'dialog dibatalkan: kembali idle'); assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'pgArcExport')[0].slice(1), [{ comments: false }]);
+    assert.strictEqual(t.run('pgArcS.phase'), 'idle', 'dialog dibatalkan: kembali idle'); assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'pgArcExport')[0].slice(1), [{ comments: true }], 'komentar ikut secara bawaan (5h)');
     t.api.ret_pgArcExport = async () => ({ ok: false, err: 'x', code: 'busy' }); t.click('arcexp'); await sleep(10);
     assert.strictEqual(t.run('pgArcS.phase'), 'idle'); assert(/sedang berjalan/.test(t.toasts[t.toasts.length - 1]), 'busy: pesan ramah');
     t.els.pgarccm = { checked: true }; t.api.ret_pgArcExport = async () => ({ ok: true, job: JOB, name: 'cadangan.archpg' }); t.click('arcexp'); await sleep(10);
@@ -73,8 +73,8 @@ const sum = (o) => Object.assign({
     t.ev({ job: JOB2, kind: 'export', phase: 'progress', posts: 9, total: 9, bytes: 1, totalBytes: 1 }); assert(!/9 \/ 9/.test(t.box()), 'pekerjaan lain diabaikan');
     t.ev({ job: JOB, kind: 'export', phase: 'progress', posts: 2, total: 4, bytes: 512, totalBytes: 1024 });
     assert(/2 \/ 4 postingan/.test(t.box()) && t.box().includes('width:50%'), 'progres: jumlah dan lebar bar');
-    t.ev({ job: JOB, kind: 'export', phase: 'done', result: { name: 'cadangan.archpg', size: 2048, posts: 4, media: 1, files: 2, videos: 0, bytes: 900, skipped: 1, skippedWhy: { missing: 1 }, comments: { items: 3, tombs: 1 } } });
-    assert.strictEqual(t.run('pgArcS.phase'), 'done'); assert(/Selesai: 4 postingan, 1 gambar, 2 lampiran, 0 video/.test(t.box()) && t.box().includes('cadangan.archpg') && /1 postingan dilewati/.test(t.box()) && /Komentar ikut: 3 komentar, 1 penghapusan/.test(t.box()));
+    t.ev({ job: JOB, kind: 'export', phase: 'done', result: { name: 'cadangan.archpg', size: 2048, posts: 4, media: 1, files: 2, videos: 0, bytes: 900, skipped: 1, skippedWhy: { missing: 1 }, comments: { items: 3, tombs: 1 }, reactions: { posts: 5, cmts: 2 } } });
+    assert.strictEqual(t.run('pgArcS.phase'), 'done'); assert(/Selesai: 4 postingan, 1 gambar, 2 lampiran, 0 video/.test(t.box()) && t.box().includes('cadangan.archpg') && /1 postingan dilewati/.test(t.box()) && /Komentar ikut: 3 komentar, 1 penghapusan/.test(t.box()) && /Reaksi ikut: 5 pada postingan, 2 pada komentar/.test(t.box()), 'hasil ekspor menyebut komentar dan reaksi');
     t.click('arcok'); assert.strictEqual(t.run('pgArcS.phase'), 'idle'); assert(/Ekspor…/.test(t.box()));
     // galat di tengah jalan
     t.api.ret_pgArcExport = async () => ({ ok: true, job: JOB2, name: 'b.archpg' }); t.click('arcexp'); await sleep(10);
@@ -93,17 +93,19 @@ const sum = (o) => Object.assign({
     t.api.ret_pgArcOpen = async () => ({ ok: true, token: TOK, name: 'cadangan.archpg', summary: sum() }); t.click('arcimp'); await sleep(10);
     assert.strictEqual(t.run('pgArcS.phase'), 'preview');
     let b = t.box(); assert(/5 postingan di arsip: <b>3 baru<\/b>, 1 sudah ada, 1 bentrok/.test(b) && b.includes('Lampiran baru: 2') && b.includes('id="pgarccmi"') && /4 komentar, 1 penghapusan; 4 akan ditambahkan/.test(b) && /Impor 3 postingan/.test(b));
+    assert(/Reaksi ikut dipulihkan \(5 pada postingan, 2 pada komentar\)/.test(t.box()), 'pratinjau menyebut reaksi ikut dipulihkan');
     const before = t.calls.filter((c) => c[0] === 'pgMine').length;
     t.els.pgarccmi = { checked: false }; t.api.ret_pgArcImport = async () => ({ ok: true, job: JOB }); t.click('arcgo'); await sleep(10);
     assert.deepStrictEqual(t.calls.filter((c) => c[0] === 'pgArcImport')[0].slice(1), [TOK, { comments: false }], 'token + pilihan komentar'); assert.strictEqual(t.run('pgArcS.phase'), 'running');
     t.ev({ job: JOB, kind: 'import', phase: 'progress', posts: 1, total: 3, bytes: 10, totalBytes: 40 }); assert(/Mengimpor/.test(t.box()) && /1 \/ 3/.test(t.box()));
-    t.ev({ job: JOB, kind: 'import', phase: 'done', result: { imported: 3, same: 1, conflict: 1, bad: 0, failed: 0, aborted: false, total: 5, blobs: { written: 2, reuse: 0, bytes: 4096 }, ownerMatch: true, comments: { status: 'skipped', why: 'off', items: 4, tombs: 1 } } });
-    b = t.box(); assert(/Selesai: <b>3 postingan masuk<\/b>, 1 sudah ada, 1 bentrok/.test(b) && /2 lampiran ditulis/.test(b) && /Komentar tidak dipulihkan/.test(b));
+    t.ev({ job: JOB, kind: 'import', phase: 'done', result: { imported: 3, same: 1, conflict: 1, bad: 0, failed: 0, aborted: false, total: 5, blobs: { written: 2, reuse: 0, bytes: 4096 }, ownerMatch: true, comments: { status: 'skipped', why: 'off', items: 4, tombs: 1 }, reactions: { status: 'done', posts: 5, cmts: 2, post: { added: 3, updated: 1, same: 1 }, cmt: { added: 2, updated: 0, same: 0 } } } });
+    b = t.box(); assert(/Selesai: <b>3 postingan masuk<\/b>, 1 sudah ada, 1 bentrok/.test(b) && /2 lampiran ditulis/.test(b) && /Komentar tidak dipulihkan/.test(b) && /Reaksi: 5 dipulihkan, 1 diperbarui, 1 sudah ada/.test(b), 'hasil impor menyebut reaksi');
     assert(t.calls.filter((c) => c[0] === 'pgMine').length > before, 'daftar Halamanku dimuat ulang sesudah impor yang memasukkan postingan');
     t.click('arcok');
     // identitas beda: tanpa kotak komentar, penjelasan; tidak ada yang baru = tombol mati; batal kembali idle
-    t.api.ret_pgArcOpen = async () => ({ ok: true, token: TOK, name: 'lain.archpg', summary: sum({ ownerMatch: false, counts: { total: 2, new: 0, same: 2, conflict: 0, bad: 0 }, comments: { status: 'ok', present: true, restorable: false, items: 3, tombs: 0, plan: null } }) }); t.click('arcimp'); await sleep(10);
-    b = t.box(); assert(!b.includes('pgarccmi') && /identitas lain/.test(b) && /tidak dibawa/.test(b) && /data-pg="arcgo" disabled/.test(b) && /Tidak ada yang baru/.test(b));
+    t.api.ret_pgArcOpen = async () => ({ ok: true, token: TOK, name: 'lain.archpg', summary: sum({ ownerMatch: false, counts: { total: 2, new: 0, same: 2, conflict: 0, bad: 0 }, comments: { status: 'ok', present: true, restorable: false, items: 3, tombs: 0, plan: null }, reactions: { status: 'ok', present: true, restorable: false, posts: 5, cmts: 2, plan: null } }) }); t.click('arcimp'); await sleep(10);
+    b = t.box(); assert(/Reaksi di arsip \(5 pada postingan, 2 pada komentar\) tidak dibawa/.test(b), 'identitas lain: reaksi dilaporkan tidak dibawa');
+    assert(!b.includes('pgarccmi') && /identitas lain/.test(b) && /tidak dibawa/.test(b) && /data-pg="arcgo" disabled/.test(b) && /Tidak ada yang baru/.test(b));
     t.click('arcno'); assert.strictEqual(t.run('pgArcS.phase'), 'idle'); assert.strictEqual(t.run('pgArcS.token'), null);
     // komentar saja yang baru (postingan sudah ada) tetap bisa diimpor
     t.api.ret_pgArcOpen = async () => ({ ok: true, token: TOK, name: 'k.archpg', summary: sum({ counts: { total: 2, new: 0, same: 2, conflict: 0, bad: 0 } }) }); t.click('arcimp'); await sleep(10);

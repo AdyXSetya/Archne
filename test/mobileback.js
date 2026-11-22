@@ -29,10 +29,11 @@ ok('jembatan: kabar Kembali dijawab (true / false / galat), hanya dari induk');
 // 2. urutan di UI: lembar tambah orang -> kartu diperbesar -> kecilkan panggilan -> dialog
 assert(/nbridge\.onBack = \(\) => uiBack\(\)/.test(src));
 const ui = src.slice(src.indexOf('function uiBack()'), src.indexOf('// </back>'));
-const iPick = ui.indexOf('callPick'), iFocus = ui.indexOf('vidFocus'), iMin = ui.indexOf('callMin = true'), iModal = ui.indexOf('backModal()');
-assert(iPick >= 0 && iPick < iFocus && iFocus < iMin && iMin < iModal, 'urutan: picker, fokus, kecilkan, dialog');
+const iView = ui.indexOf('viewKey'), iPick = ui.indexOf('callPick'), iFocus = ui.indexOf('vidFocus'), iMin = ui.indexOf('callMin = true'), iModal = ui.indexOf('backModal()');
+assert(iView >= 0 && iView < iPick && iPick < iFocus && iFocus < iMin && iMin < iModal, 'urutan: layar penuh (D.1f), picker, fokus, kecilkan, dialog');
+assert(/if \(viewKey\) \{ viewerExit\(\);[^}]*return true; \}/.test(ui), 'layar penuh ditutup dan Kembali dianggap ditangani');
 assert(/function backModal/.test(src) && /'#dlgno,#vcancel,#mclose/.test(src) && /dlg && vis\(dlg\)/.test(src), 'dialog konfirmasi didahulukan');
-ok('UI: Kembali menutup picker, mengecilkan kartu, mengecilkan panggilan, lalu menutup dialog');
+ok('UI: Kembali menutup layar penuh, picker, mengecilkan kartu, mengecilkan panggilan, lalu menutup dialog');
 
 // 3. MainActivity: tepi-ke-tepi
 {

@@ -150,7 +150,7 @@ const flush = () => new Promise((r) => setImmediate(r));
       if (['onProgress', 'onUpdate', 'onRemoved', 'onCall'].includes(n)) return () => {};
       return async (...a) => { apiCalls.push([n, ...a]); return { ok: true }; };
     } });
-    const win = { api, LanCall: LC, RTCPeerConnection: function () {}, MediaStream: function () {}, Audio: function () { this.play = () => Promise.resolve(); this.pause = () => {}; }, navigator: { mediaDevices: { getUserMedia: async () => ({}) } } };
+    const win = { api, addEventListener: () => {}, LanCall: LC, RTCPeerConnection: function () {}, MediaStream: function () {}, Audio: function () { this.play = () => Promise.resolve(); this.pause = () => {}; }, navigator: { mediaDevices: { getUserMedia: async () => ({}) } } };
     const ctx = { window: win, document: doc, CSS: { escape: (s) => s }, FileCard: require('../renderer/archne-filecard'), Avatar: require('../renderer/archne-avatar'), confirm: () => true, alert: () => {}, console, setInterval: () => 0, setTimeout, clearTimeout, Date, parseInt, Set, Math, JSON };
     vm.createContext(ctx);
     const now = Date.now();
@@ -208,7 +208,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     {
       const els2 = {}; const doc2 = Object.assign({}, doc, { getElementById: (id) => els2[id] || (els2[id] = mkEl(id)) });
       state.calls = [{ id: 'a1'.repeat(8), peer: P, name: 'Budi', dir: 'in', out: 'missed', at: Date.now(), dur: 0, hc: false }];
-      const ctx2 = Object.assign({}, ctx, { document: doc2, window: { api, LanCall: LC, navigator: {} } });
+      const ctx2 = Object.assign({}, ctx, { document: doc2, window: { api, addEventListener: () => {}, LanCall: LC, navigator: {} } });
       vm.createContext(ctx2); vm.runInContext(inline, ctx2); await flush(); await flush();
       vm.runInContext("tab = 'calls'; emptyTab = true; render()", ctx2);
       assert(/class="item crow"/.test(els2.list.innerHTML) && !/data-callback/.test(els2.list.innerHTML), 'tanpa WebRTC: tanpa tombol telepon balik');

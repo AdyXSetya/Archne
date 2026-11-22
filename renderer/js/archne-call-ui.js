@@ -27,7 +27,7 @@ function mountVideos(v) {
         if (!el) { el = document.createElement('video'); el.muted = true; el.autoplay = true; el.playsInline = true; el.setAttribute('playsinline', ''); vidEls.set(key, el); }
         const rev = key === 'me' ? (v.vrev || 0) : 0; // balik kamera mengganti trek di stream yang sama: pasang ulang agar <video> tidak membeku
         if (el.srcObject !== st || el._rev !== rev) { if (el._rev !== rev) el.srcObject = null; el.srcObject = st; el._rev = rev; }
-        el.className = key === 'me' && v.facing !== 'environment' ? 'mirror' : ''; // pratinjau kamera depan dicerminkan, kamera belakang tidak
+        el.className = key === 'me' ? (v.scr ? 'scr' : v.facing !== 'environment' ? 'mirror' : '') : (callCtl.remoteScreen(key) ? 'scr' : ''); // pratinjau kamera depan dicerminkan, kamera belakang tidak; layar yang dibagikan (milikku atau lawan) utuh (contain), tidak dipotong
         if (el.parentNode !== t) t.insertBefore(el, t.firstChild);
         t.classList.add('hasv');
         const p = el.play(); if (p && p.catch) p.catch(() => {});
@@ -47,6 +47,7 @@ function pipCheck() {
   const on = !!(nbridge && (nbridge.pipOn || (nbridge.pipWant && pipSmall())));
   if (on === pipShown) return;
   pipShown = on;
+  if (on && viewerExit() && callCtl && callCtl.cur) callCtl._render(); // jendela kecil tidak cocok dengan layar penuh landscape
   const b = bodyCl(); if (b) on ? b.add('archne-pip') : b.remove('archne-pip');
   on ? pipStart() : pipStop();
 }
@@ -124,7 +125,7 @@ function spkSet(on) {
 // </speaking>
 // <back>
 // Tombol Kembali perangkat (Android): urutan paling atas dulu. Dialog / lembar (.mbg) ditutup lewat tombol Batal / Tutup-nya sendiri, jadi keadaan UI tetap konsisten.
-// Layar panggilan ada di atas dialog (z-index): lembar "Tambah orang" ditutup, kartu yang diperbesar dikecilkan, lalu panggilan dikecilkan jadi bar (seperti WhatsApp).
+// Layar panggilan ada di atas dialog (z-index): mode tonton layar penuh ditutup, lembar "Tambah orang" ditutup, kartu yang diperbesar dikecilkan, lalu panggilan dikecilkan jadi bar (seperti WhatsApp).
 // Yang tidak ditangani (false): cangkang mundur lewat riwayat (chat -> daftar, penampil gambar) atau menyembunyikan aplikasi bila sudah di dasar.
 function backModal() {
   try {
@@ -140,6 +141,7 @@ function backModal() {
 function uiBack() {
   try {
     const v = callCtl && callCtl.view();
+    if (viewKey) { viewerExit(); if (callCtl) callCtl._render(); return true; } // D.1f: layar penuh ditutup lebih dulu, baru urutan lama
     if (v && callPick) { callPick = false; callCtl._render(); return true; }
     if (v && vidFocus && LC.videoView(v)) { vidFocus = null; callBar = true; callCtl._render(); return true; }
     if (v && LC.canMinimize(v) && !callMin) { callMin = true; callPick = false; callCtl._render(); return true; }
@@ -150,6 +152,77 @@ function uiBack() {
 // Balik kamera hanya ditawarkan di perangkat sentuh (HP/tablet, termasuk cangkang Android): di desktop biasanya satu webcam, jadi tombolnya tidak berguna.
 function canFlipCam() { try { return !!(nbridge || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)); } catch (x) { return false; } }
 let callCtl = null, ringer = null, nbridge = null, callPick = false, callMin = false, vidFocus = null, callWasBusy = false, callBar = true; // callBar: tombol layar panggilan tampil (ketuk video yang diperbesar = tutup/buka, seperti WhatsApp); callPick: lembar "Tambah orang" sedang terbuka; callMin: layar panggilan dikecilkan jadi bar
+// <viewer>
+// Mode tonton layar penuh (D.1, Android): layar yang dibagikan lawan bicara memenuhi layar HP. Native memutar ke landscape (mengikuti sensor) dan menyembunyikan bilah sistem (nbridge.viewer).
+// Tidak pernah otomatis (D.1b): pengguna memilihnya lewat tombol "Layar penuh" di kartu layar atau lewat ajakan yang muncul sebentar saat layar mulai dibagikan.
+// Keluar: tombol di pojok, tombol Kembali, atau otomatis saat berbagi berhenti / panggilan berakhir / dikecilkan / jendela PiP tampil (D.1e).
+let viewKey = null, viewInv = '', viewInvTimer = null, scrSeen = new Set(), vz = { s: 1, x: 0, y: 0 };
+function viewZoomApply() { const el = viewKey && vidEls.get(viewKey); if (el) el.style.transform = LC.vzCss(vz); }
+function viewZoomReset() { vz = { s: 1, x: 0, y: 0 }; for (const el of vidEls.values()) { try { el.style.transform = ''; } catch (x) {} } }
+function viewInvClear() { viewInv = ''; if (viewInvTimer) { clearTimeout(viewInvTimer); viewInvTimer = null; } }
+function viewInvite(k) {
+  viewInvClear(); viewInv = k;
+  viewInvTimer = setTimeout(() => { viewInvTimer = null; if (viewInv === k) { viewInv = ''; if (callCtl && callCtl.cur) callCtl._render(); } }, 12000);
+}
+function viewerEnter(key) {
+  if (!nbridge || !key || viewKey === key) return false;
+  viewInvClear(); callPick = false;
+  viewKey = key; vidFocus = key; callBar = false; // kartu diperbesar + tombol panggilan disembunyikan; nbridge.viewer mengunci landscape
+  viewZoomReset();
+  nbridge.viewer(true);
+  return true;
+}
+function viewerExit() {
+  if (!viewKey) return false;
+  viewKey = null; vidFocus = null; callBar = true;
+  viewZoomReset();
+  if (nbridge) nbridge.viewer(false);
+  return true;
+}
+// Dipanggil tiap render: ajakan untuk layar yang baru dibagikan, dan keluar otomatis bila syarat mode tonton tidak berlaku lagi.
+function viewerSync(v, mini) {
+  const keys = v && v.phase === 'active' && Array.isArray(v.legs) ? v.legs.filter((l) => l && l.peer && l.scr === true).map((l) => l.peer) : [];
+  for (const k of keys) if (!scrSeen.has(k)) { scrSeen.add(k); if (nbridge && !viewKey && !mini) viewInvite(k); }
+  for (const k of [...scrSeen]) if (!keys.includes(k)) { scrSeen.delete(k); if (viewInv === k) viewInvClear(); }
+  if (viewKey && (!v || mini || pipShown || !LC.videoView(v) || !keys.includes(viewKey))) viewerExit();
+}
+// Cubit untuk zoom + geser (D.1c). Titik jari relatif ke tengah kartu; hitungannya di LC.vzGesture. Ketuk dua kali = perbesar di titik itu / kembali ke ukuran asli.
+const vgPts = new Map();
+let vgStart = null, vgMoved = false, vgLast = 0, vgLastPt = null;
+function vgBox() { const root = $('callov'), t = viewKey && root && root.querySelector ? root.querySelector('.cvt.viewer') : null; return t ? { t, r: t.getBoundingClientRect() } : null; }
+function vgRel(b, p) { return { x: p.x - (b.r.left + b.r.width / 2), y: p.y - (b.r.top + b.r.height / 2) }; }
+function vgBegin(b) { vgStart = { z: vz, pts: [...vgPts.values()].map((p) => vgRel(b, p)) }; }
+function vgDown(e) {
+  if (!viewKey || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const b = vgBox();
+  if (!b || !b.t.contains(e.target) || (e.target.closest && e.target.closest('button'))) return;
+  if (!vgPts.size) vgMoved = false;
+  vgPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (vgPts.size > 1) vgMoved = true;
+  vgBegin(b);
+}
+function vgMove(e) {
+  if (!viewKey || !vgPts.has(e.pointerId)) return;
+  const b = vgBox(); if (!b || !vgStart) return;
+  vgPts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  const pts = [...vgPts.values()].map((p) => vgRel(b, p));
+  if (pts.some((p, i) => vgStart.pts[i] && Math.hypot(p.x - vgStart.pts[i].x, p.y - vgStart.pts[i].y) > 8)) vgMoved = true;
+  const nz = LC.vzGesture(vgStart, pts, b.r.width, b.r.height);
+  if (nz.s !== vz.s || nz.x !== vz.x || nz.y !== vz.y) { vz = nz; viewZoomApply(); }
+}
+function vgUp(e) {
+  if (!vgPts.has(e.pointerId)) return;
+  vgPts.delete(e.pointerId);
+  const b = vgBox();
+  if (vgPts.size) { if (b) vgBegin(b); return; } // jari tersisa: gestur baru dari keadaan sekarang
+  vgStart = null;
+  if (!b || vgMoved || e.type !== 'pointerup') { vgLast = 0; return; }
+  const now = Date.now(), pt = { x: e.clientX, y: e.clientY };
+  if (vgLast && now - vgLast < 320 && vgLastPt && Math.hypot(pt.x - vgLastPt.x, pt.y - vgLastPt.y) < 40) {
+    vz = LC.vzDoubleTap(vz, vgRel(b, pt), b.r.width, b.r.height); viewZoomApply(); vgLast = 0;
+  } else { vgLast = now; vgLastPt = pt; }
+}
+// </viewer>
 if (LC && LC.supported(window) && window.api.onCall) {
   ringer = LC.makeRinger(window.AudioContext || window.webkitAudioContext);
   nbridge = LC.nativeBridge(window); // di cangkang Android (iframe): izin mikrofon, mode panggilan, speaker lewat halaman induk
@@ -161,8 +234,9 @@ if (LC && LC.supported(window) && window.api.onCall) {
         if (!v || v.phase !== 'active') callPick = false;
         if (!LC.canMinimize(v)) callMin = false; // tidak ada panggilan / sedang berdering: selalu layar penuh
         const mini = !!v && callMin;
+        viewerSync(v, mini); // D.1e: keluar otomatis dari layar penuh (berbagi berhenti, panggilan berakhir / dikecilkan) + ajakan layar baru
         if (!LC.videoView(v)) vidFocus = null; // kartu yang diperbesar hanya berlaku selama tampilan video
-        const ovHtml = LC.overlayHtml(v, { minimized: mini, focus: vidFocus, esc, avatar: (id) => avHtml(id), icons: IC, here: v && v.vc ? vcHere(v.vc) : null, meId: S && S.me ? S.me.id : '', speaker: !!(nbridge && nbridge.audio), flip: canFlipCam(), picker: callPick && v ? LC.inviteCandidates(S.peers, v, blockedIds()) : null });
+        const ovHtml = LC.overlayHtml(v, { minimized: mini, focus: vidFocus, esc, avatar: (id) => avHtml(id), icons: IC, here: v && v.vc ? vcHere(v.vc) : null, meId: S && S.me ? S.me.id : '', speaker: !!(nbridge && nbridge.audio), viewer: !!nbridge, viewKey, viewInvite: viewInv, flip: canFlipCam(), picker: callPick && v ? LC.inviteCandidates(S.peers, v, blockedIds()) : null });
         // Tampilan video: HTML hanya dipasang bila berubah, supaya elemen video tidak dicopot dan dipasang ulang tanpa perlu.
         const vv = LC.videoView(v);
         if (!vv || ovHtml !== ovLast) $('callov').innerHTML = ovHtml;
@@ -196,6 +270,8 @@ if (LC && LC.supported(window) && window.api.onCall) {
     document.addEventListener('visibilitychange', () => { if (pipShown) return; callCtl.appHidden(document.visibilityState === 'hidden'); }); // di jendela PiP aplikasi masih tampil; saat jendela ditutup, cangkang yang mengabari
   }
   const callRerender = () => { if (callCtl && callCtl.cur) callCtl._render(); };
+  { const ov = $('callov'); ov.addEventListener('pointerdown', vgDown); ov.addEventListener('pointermove', vgMove); ov.addEventListener('pointerup', vgUp); ov.addEventListener('pointercancel', vgUp); } // cubit / geser / ketuk dua kali di mode tonton
+  window.addEventListener('resize', () => { if (viewKey) { viewZoomReset(); } }); // HP diputar: ukuran kartu berubah, zoom kembali ke 1
   $('callov').onclick = async (e) => {
     const t = e.target;
     if (t && t.classList && t.classList.contains('cpk')) { callPick = false; callRerender(); return; } // ketuk latar gelap = tutup
@@ -210,15 +286,20 @@ if (LC && LC.supported(window) && window.api.onCall) {
     const nb = e.target.closest && e.target.closest('[data-cnoise]'); if (nb) { callCtl.setNoise(nb.dataset.cnoise); return; }
     const b = e.target.closest && e.target.closest('[data-cact]'); if (!b) return;
     const a = b.dataset.cact;
+    if (a === 'viewer') { viewerEnter(b.dataset.vfocus || ''); callRerender(); return; } // tombol "Layar penuh" / ajakan di kartu layar
+    if (a === 'unview') { viewerExit(); callRerender(); return; }
     if (a === 'min') { callMin = true; callPick = false; callRerender(); return; }
     if (a === 'max') { callMin = false; callRerender(); return; }
+    if (a === 'focus' && viewKey) return; // mode tonton: ketukan hanya untuk gestur (ketuk dua kali = zoom); tombol keluar ada di pojok
     if (a === 'focus') { // ketuk kartu = perbesar dan sembunyikan tombol (layar penuh); ketuk kartu yang sudah diperbesar = tombol tutup/buka
       const k = b.dataset.vfocus || null;
       if (k && vidFocus === k) callBar = !callBar; else { vidFocus = k; callBar = false; }
       callRerender(); return;
     }
-    if (a === 'unfocus') { vidFocus = null; callBar = true; callRerender(); return; }
+    if (a === 'unfocus') { vidFocus = null; callBar = true; viewerExit(); callRerender(); return; }
     if (a === 'accept') callCtl.accept(); else if (a === 'reject') callCtl.reject(); else if (a === 'hang') callCtl.hangup(); else if (a === 'mute') callCtl.mute(); else if (a === 'deafen') callCtl.deafen(); else if (a === 'speaker') callCtl.speaker(); else if (a === 'cam') callCtl.camera(); else if (a === 'flip') callCtl.flipCamera();
+    else if (a === 'scr') { const v0 = callCtl.view(); (v0 && v0.scr ? callCtl.stopScreen() : callCtl.startScreen()).catch(() => {}); } // berbagi layar (C.5): pemilihnya dialog dari proses utama (js/archne-screen-picker.js)
+    else if (a === 'scrstop') callCtl.stopScreen().catch(() => {});
     else if (a === 'add') {
       const v = callCtl.view();
       if (v && LC.roomCount(v) >= LC.CALL_MAX_PEERS) return toast(txf('call.full', 'Panggilan sudah penuh (maksimal {max} peserta)', { max: LC.CALL_MAX_PEERS }));

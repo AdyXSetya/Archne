@@ -93,7 +93,7 @@ const clock = () => { let t = 1e6; return { now: () => t, adv: (ms) => { t += ms
     c.adv(T.CF_TTL * 1000 - T.CF_MIN_LEFT + 1000); mode = 'net';
     const r = await t.ice();
     assert.strictEqual(r.err, 'ECONNRESET'); assert.strictEqual(turnUrls(r).length, 1, 'gagal memperbarui tetapi kredensial lama masih berlaku: tetap dipakai');
-    const before = h.reqs.length; await t.ice(); await t.ice(); assert.strictEqual(h.reqs.length, before, 'setelah gagal: jeda 30 dtk, tidak menghujani penyedia');
+    const before = h.reqs.length; await t.ice(); await t.ice(); assert.strictEqual(h.reqs.length, before, 'setelah gagal: jeda singkat, tidak menghujani penyedia');
     c.adv(T.FAIL_BACKOFF + 1); mode = 'ok'; const r3 = await t.ice(); assert(!r3.err && turnUrls(r3).length === 1 && h.reqs.length === before + 1, 'pulih sendiri setelah jeda');
     // tanpa cache sama sekali
     for (const [m, re] of [['net', /ECONNRESET/], ['401', /Cloudflare token was rejected/], ['junk', /could not be read/], ['noturn', /no TURN server/]]) {
@@ -101,6 +101,12 @@ const clock = () => { let t = 1e6; return { now: () => t, adv: (ms) => { t += ms
       const f = await t2.ice();
       assert.deepStrictEqual(f.iceServers, T.DEFAULT_STUN, m + ': cadangan STUN bawaan, bukan daftar kosong'); assert(re.test(f.err), m + ' -> ' + f.err);
     }
+    // gangguan sesaat: dicoba ulang sekali dan berhasil; penolakan token tidak diulang
+    { let k = 0; const h2 = fakeHttp(async () => { await flush(); if (++k === 1) throw new Error('ECONNRESET'); return { status: 200, body: CFRES(9) }; });
+      const tr = T.createTurn({ https: h2, now: c.now, retryMs: 1 }); tr.set(CF); const rr = await tr.ice();
+      assert(!rr.err && turnUrls(rr).length === 1 && h2.reqs.length === 2, 'gangguan sesaat: coba ulang sekali lalu berhasil');
+      const h3 = fakeHttp(async () => { await flush(); return { status: 401, body: '{}' }; }); const tq = T.createTurn({ https: h3, now: c.now, retryMs: 1 }); tq.set(CF); await tq.ice();
+      assert.strictEqual(h3.reqs.length, 1, 'token ditolak: tidak diulang'); }
     // set() baru menyetel ulang cache dan jeda
     mode = 'ok'; const t3 = T.createTurn({ https: h, now: c.now }); t3.set(CF); mode = 'net'; await t3.ice(); mode = 'ok';
     t3.set({ provider: 'cloudflare', keyId: 'lain', token: 'T2' }); const r4 = await t3.ice(); assert(!r4.err, 'konfigurasi baru tidak terkena jeda gagal milik konfigurasi lama');

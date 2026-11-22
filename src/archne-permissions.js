@@ -25,4 +25,19 @@ function allowMedia(permission, info, rendererDir) {
   return info.mediaType === 'audio' || info.mediaType === 'video';
 }
 
-module.exports = { allowMedia, isAppUrl };
+// Tangkap layar (v0.32.0 C.3): izin 'display-capture' hanya untuk halaman Archne sendiri. Izin ini sendirian tidak menyerahkan layar apa pun:
+// aliran layar hanya lahir dari session.setDisplayMediaRequestHandler (src/archne-screenpick.js), yang menolak halaman lain, mengharuskan pengguna memilih
+// sumber sendiri; audio sistem (C.6) hanya ikut bila pengguna mencentangnya di dialog itu. Izin hanya untuk tipe video/audio; tipe lain ditolak di sini.
+// info: { url?, origin?, mediaTypes? }
+function allowDisplay(permission, info, rendererDir) {
+  if (permission !== 'display-capture') return false;
+  info = info || {};
+  if (!(isAppUrl(info.url, rendererDir) || (!info.url && isAppOrigin(info.origin)))) return false;
+  if (Array.isArray(info.mediaTypes) && info.mediaTypes.some((t) => t !== 'video' && t !== 'audio')) return false;
+  return true;
+}
+
+// Gabungan untuk setPermissionRequestHandler / setPermissionCheckHandler di main.js
+const allowPermission = (permission, info, rendererDir) => allowMedia(permission, info, rendererDir) || allowDisplay(permission, info, rendererDir);
+
+module.exports = { allowMedia, allowDisplay, allowPermission, isAppUrl };

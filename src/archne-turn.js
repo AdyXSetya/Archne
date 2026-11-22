@@ -17,8 +17,10 @@ const DEFAULT_STUN = [{ urls: 'stun:stun.cloudflare.com:3478' }]; // sama dengan
 const CF_TTL = 86400;                 // umur kredensial Cloudflare (dtk)
 const CF_MIN_LEFT = 6 * 3600e3;       // diperbarui bila sisa umur < 6 jam, jadi panggilan yang baru mulai selalu punya >= 6 jam
 const METERED_TTL = 3600e3;           // kredensial Metered dari API key: disimpan 1 jam
-const FAIL_BACKOFF = 30e3;            // gagal mengambil: jangan coba lagi sebelum ini lewat
-const HTTP_TIMEOUT = 8000, HTTP_MAX = 64 * 1024;
+const FAIL_BACKOFF = 5e3;             // gagal mengambil: jangan coba lagi sebelum ini lewat (singkat: panggilan berikutnya langsung mencoba lagi, bukan menunggu setengah menit tanpa TURN)
+const HTTP_TIMEOUT = 4000, HTTP_MAX = 64 * 1024;
+const RETRY_MS = 400;                 // jeda sebelum satu kali coba ulang (gangguan jaringan sesaat); token/ID ditolak tidak diulang
+const PERMANENT = new Set(['e.turn.cfDenied', 'e.turn.cfNotFound', 'e.turn.meteredDenied', 'e.turn.cfNoTurn', 'e.turn.meteredNone', 'e.turn.tooBig']);
 const URL_RE = /^(stun|stuns|turn|turns):[^\s]{1,200}$/i;
 const APP_RE = /^[a-z0-9][a-z0-9-]{0,62}$/i;
 const KEYID_RE = /^[A-Za-z0-9_-]{1,100}$/;
@@ -125,6 +127,15 @@ function createTurn(o) {
     return { servers, until: now() + CF_TTL * 1000 };
   }
 
+  // Satu kali coba ulang untuk gangguan sesaat (timeout, putus, 5xx, balasan rusak). Penolakan tetap (token/ID salah) langsung dilaporkan.
+  async function retry(fn) {
+    try { return await fn(); } catch (e) {
+      if (e && PERMANENT.has(e.ek)) throw e;
+      await new Promise((res) => setTimeout(res, o.retryMs != null ? o.retryMs : RETRY_MS));
+      return fn();
+    }
+  }
+
   // Segar? Cloudflare diperbarui lebih awal (CF_MIN_LEFT) supaya panggilan panjang tidak kehilangan kredensial di tengah.
   const fresh = (c) => c && (cfg.provider === 'cloudflare' ? c.until - now() > CF_MIN_LEFT : c.until > now());
 
@@ -142,7 +153,7 @@ function createTurn(o) {
     if (failAt && now() - failAt < FAIL_BACKOFF) return fallback(c, failErr);
     if (!inflight) {
       const g = gen;
-      inflight = (c.provider === 'metered' ? fetchMetered(c) : fetchCloudflare(c)).then((r) => {
+      inflight = retry(() => (c.provider === 'metered' ? fetchMetered(c) : fetchCloudflare(c))).then((r) => {
         if (g === gen) { cache = r; failAt = 0; failErr = null; }
       }, (e) => {
         if (g === gen) { failAt = now(); failErr = e instanceof SyntaxError ? ek('e.turn.unreadable', null, 'Balasan penyedia TURN tidak terbaca') : (e && e.message ? e : ek('e.turn.fetchFail', null, 'gagal mengambil kredensial')); }

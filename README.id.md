@@ -11,7 +11,7 @@ Ngobrol, telepon, dan berbagi berkas langsung antar perangkat.
 Identitasmu cuma sepasang kunci di perangkatmu sendiri.
 
 ![Status](https://img.shields.io/badge/status-beta-orange)
-![Versi](https://img.shields.io/badge/versi-0.31.0-blue)
+![Versi](https://img.shields.io/badge/versi-0.32.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%C2%B7%20Android%20%C2%B7%20Browser-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.12-339933)
@@ -36,11 +36,11 @@ Archne dibuat dengan arah sebaliknya. Setiap perangkat adalah **peer** yang seta
 
 > **Status: beta.** Fitur utama sudah berjalan dan dipakai sehari-hari, tetapi masih ada bagian yang bisa berubah. Menemukan bug? Silakan buka *issue*.
 
-### 🆕 Baru di 0.31.0
-- **Android dibangun ulang dengan Capacitor 8** dan runtime **Node 24**. Cordova sudah tidak dipakai.
-- **Dukungan page size 16 KB** untuk perangkat Android yang lebih baru (diperiksa dengan `zipalign`).
-- **Desktop pindah ke Electron 45** (electron-builder 26).
-- Android: notifikasi panggilan lebih baik (Jawab / Tolak, tampil di layar kunci), tampilan edge-to-edge, penanganan tombol Kembali, serta ekspor/impor Halaman.
+### 🆕 Baru di 0.32.0
+- **Berbagi layar di panggilan**, dari Windows dan dari Android. Windows bisa menambah suara sistem (mati bawaan); Android membagikan suara aplikasi media.
+- **Menonton layar yang dibagikan di HP** dalam layar penuh, dengan cubit untuk zoom.
+- **Cadangan Halaman** kini membawa komentar dan reaksi.
+- Perbaikan: umpan Halaman berhenti memuat saat digulir, force close dan loading tanpa akhir saat Android dibuka lagi, panggilan lebih cepat tersambung, TURN lebih andal.
 
 > **Memperbarui dari 0.30.0?** Ini perubahan internal yang besar. Data aplikasi lama **tidak** dibawa. Android hanya mau memasang APK baru di atas yang lama bila keduanya ditandatangani kunci yang sama; kalau tidak, uninstall dulu. Rincian lengkap ada di [changelog](CHANGELOG.id.md).
 
@@ -62,6 +62,7 @@ Archne dibuat dengan arah sebaliknya. Setiap perangkat adalah **peer** yang seta
 - **Channel suara** untuk grup (bisa dikunci per anggota) dan **channel suara publik** dengan PIN 6 angka.
 - **Peredam kebisingan** berbasis RNNoise, jalan lokal di perangkatmu.
 - Riwayat panggilan dan penanda panggilan tak terjawab.
+- **Berbagi layar** (Windows dan Android) dengan suara sistem opsional. Satu orang membagikan dalam satu waktu. Berbagi layar memperlihatkan semua isi layarmu, termasuk notifikasi dan jendela lain, jadi pakai hanya dengan orang yang kamu percaya.
 
 ### 📎 Berkas dan media
 - **Kirim berkas** langsung antar perangkat, dikompres tanpa kehilangan data dan dienkripsi sebelum dikirim.
@@ -74,7 +75,7 @@ Halaman adalah ruang postinganmu sendiri, mirip profil sosial media tetapi tersi
 - **Komentar bertingkat**, balasan, dan **reaksi** pada komentar.
 - Hapus komentarmu sendiri di halaman orang lain.
 - Komentar dan reaksi baru muncul **langsung** tanpa muat ulang.
-- **Cadangan dan pemulihan** seluruh halaman ke satu berkas `.archpg`.
+- **Cadangan dan pemulihan** seluruh halaman, beserta komentar dan reaksi, ke satu berkas `.archpg`.
 - Pengaturan privasi per postingan (hanya teman, larang unduh).
 
 ### 🌐 Lintas jaringan
@@ -260,7 +261,6 @@ archne/
 │   └── vendor/             Pustaka pihak ketiga (MQTT, RNNoise)
 ├── mobile/                 Cangkang Android (Capacitor 8 + Node 24)
 ├── scripts/                Skrip setup dan build
-├── docs/                   Catatan perencanaan dan baseline tes
 ├── CHANGELOG.id.md         Riwayat rilis
 └── test/                   Suite tes
 ```
@@ -269,7 +269,7 @@ archne/
 
 ### Menambah bahasa atau teks
 
-Kunci teks baru harus ditambahkan di `renderer/i18n/archne-en.js` dan `archne-id.js` sekaligus. Latar belakang dan konvensinya ada di [`docs/PLAN-i18n.md`](docs/PLAN-i18n.md).
+Kunci teks baru harus ditambahkan di `renderer/i18n/archne-en.js` dan `archne-id.js` sekaligus. Samakan nama kunci dan gaya bahasanya dengan entri yang sudah ada.
 
 ---
 
@@ -282,6 +282,7 @@ Seluruh Halamanmu bisa dicadangkan ke satu berkas `.archpg` dan dipulihkan di pe
 - Satu arsip memuat maksimal **100.000** postingan dan **200.000** entri.
 - Manifest arsip maksimal 32 MiB; JSON satu postingan maksimal 8 MiB.
 - Komentar per arsip: maksimal 10.000 komentar + 10.000 nisan (penanda komentar terhapus); satu entri komentar maksimal 64 MiB.
+- Reaksi (pada postingan dan pada komentar) ikut otomatis; satu entri reaksi maksimal 8 MiB. Seperti komentar, reaksi hanya dipulihkan di identitas yang sama dengan pembuat arsip, dan digabung per orang (yang terbaru menang, tidak ada reaksi yang dicabut).
 - Format berkas: penanda awal `ARCHPGA1` ... `ARCHPGZ1` di akhir, dengan meta `fmt: 1`.
 
 ## 🤝 Kontribusi

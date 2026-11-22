@@ -142,6 +142,30 @@ const noPath = (o) => assert(!JSON.stringify(o).includes(tmp) && !/[\\/]archne-p
     }
     ok('berkas buruk, hilang, jalur relatif, tujuan tak bisa ditulis: galat jelas tanpa jalur lokal, pekerjaan dilepas');
 
+    // 6b. reaksi (5h) lewat IPC: ikut ekspor, dipulihkan hanya di identitas yang sama, ringkasan hanya angka
+    {
+      const F1 = '0000000000000011', F2 = '0000000000000022', t = Date.now() - 5000;
+      ps.rx.set(F1, p1.id, '\u{1F44D}', t); ps.rx.set(F2, p1.id, '\u2764\uFE0F', t + 1); ps.crx.set(F1, p1.id, c1.id, '\u{1F525}', t + 2);
+      pickSaveTo = out('dgn-reaksi.archpg');
+      const x = await IA.call('pgArcExport', { comments: true }), e = await final(IA, x.job);
+      assert.deepStrictEqual([e.phase, e.result.reactions], ['done', { posts: 2, cmts: 1 }]); noPath(e);
+      const want = JSON.stringify(ps.rx.owner(p1.id, A.id)), wantC = JSON.stringify(ps.crx.owner(p1.id, c1.id, A.id));
+      for (const id of ps.list({ limit: 50 }).items.map((y) => y.id)) ps.remove(id);
+      assert.deepStrictEqual(ps.rx.map, {}); pickArcTo = out('dgn-reaksi.archpg');
+      const o = await IA.call('pgArcOpen'); noPath(o);
+      assert.deepStrictEqual([o.summary.reactions.present, o.summary.reactions.restorable, o.summary.reactions.posts, o.summary.reactions.cmts, o.summary.reactions.plan.added], [true, true, 2, 1, 2]);
+      assert.deepStrictEqual(Object.keys(o.summary.reactions).sort(), ['cmts', 'plan', 'posts', 'present', 'restorable', 'status']);
+      const g = await final(IA, (await IA.call('pgArcImport', o.token)).job); noPath(g);
+      assert.deepStrictEqual([g.result.reactions.status, g.result.reactions.post.added, g.result.reactions.cmt.added], ['done', 2, 1]);
+      assert.strictEqual(JSON.stringify(ps.rx.owner(p1.id, A.id)), want); assert.strictEqual(JSON.stringify(ps.crx.owner(p1.id, c1.id, A.id)), wantC);
+      // identitas beda: ringkasan bilang tidak bisa dipulihkan, hasil 'skipped' / 'owner', B tidak menerima reaksi
+      const pb = B.pageStore(); pickArcTo = out('dgn-reaksi.archpg');
+      const ob = await IB.call('pgArcOpen'); assert.deepStrictEqual([ob.summary.reactions.present, ob.summary.reactions.restorable, ob.summary.reactions.plan], [true, false, null]);
+      const gb = await final(IB, (await IB.call('pgArcImport', ob.token)).job);
+      assert.deepStrictEqual([gb.result.reactions.status, gb.result.reactions.why], ['skipped', 'owner']); assert.deepStrictEqual(pb.rx.map, {});
+    }
+    ok('reaksi lewat IPC: ikut ekspor, pulih di identitas sama, identitas beda dilaporkan tidak dibawa, ringkasan hanya angka');
+
     // 7. dispose menghentikan pekerjaan yang berjalan
     {
       pickSaveTo = out('dispose.archpg'); const big = ps.list({ limit: 1 }).items;

@@ -62,6 +62,7 @@ public class ArchneService extends Service {
   static volatile String token = null;
   static volatile boolean visible = true; // UI sedang tampil: tidak perlu notifikasi
   static volatile boolean callOn = false; // panggilan suara berlangsung: layanan latar naik ke tipe mikrofon (diatur plugin ArchneAudio)
+  static volatile boolean screenOn = false; // berbagi layar dari HP berlangsung: layanan latar naik ke tipe mediaProjection (diatur plugin ArchneScreen)
   private static volatile ArchneService inst;
   private static volatile String ringCid = ""; // panggilan masuk yang sedang ditampilkan di notifikasi
   private static final Map<String, String> callNames = new HashMap<String, String>();
@@ -107,6 +108,21 @@ public class ArchneService extends Service {
     new Handler(Looper.getMainLooper()).post(new Runnable() { public void run() { s.promote(); } });
   }
 
+  /**
+   * Dipanggil plugin ArchneScreen: naikkan/turunkan tipe mediaProjection. Android 14+ mewajibkan layanan bertipe ini SUDAH berjalan sebelum MediaProjection diambil,
+   * jadi saat on=true dipanggil dari utas utama (setelah pengguna memberi izin) promosi dilakukan langsung, bukan diantrekan. Hasil false = layanan tidak ada
+   * atau sistem menolak tipenya; pemanggil membatalkan berbagi. on=false selalu aman (tanpa layanan: tidak berbuat apa-apa).
+   */
+  static boolean screenMode(Context ctx, boolean on) {
+    screenOn = on;
+    final ArchneService s = inst;
+    if (s == null) return !on;
+    if (Looper.myLooper() == Looper.getMainLooper()) return s.promote() || !on;
+    if (on) { screenOn = false; return false; } // dari utas lain tidak bisa dipastikan berhasil sebelum dipakai
+    new Handler(Looper.getMainLooper()).post(new Runnable() { public void run() { s.promote(); } });
+    return true;
+  }
+
   /** Bahasa aplikasi berganti (ArchneBackground.setLang): perbarui nama channel dan notifikasi layanan. Notifikasi pesan/panggilan yang sudah tampil dibiarkan. */
   static void relocalize(Context ctx) {
     final ArchneService s = inst;
@@ -114,13 +130,17 @@ public class ArchneService extends Service {
     new Handler(Looper.getMainLooper()).post(new Runnable() { public void run() { s.makeChannels(); s.promote(); } });
   }
 
-  private void promote() {
-    if (!running) return;
-    try { goForeground(); }
-    catch (RuntimeException e) { // mis. izin mikrofon dicabut atau dipanggil dari latar belakang: panggilan jalan terus tanpa tipe mikrofon
-      callOn = false;
-      try { goForeground(); } catch (RuntimeException e2) { /* abaikan */ }
-    }
+  private boolean promote() {
+    if (!running) return false;
+    boolean s = screenOn;
+    try { goForeground(); return true; }
+    catch (RuntimeException e) { /* tipe ditolak (izin dicabut, atau dipanggil dari latar belakang): turunkan satu per satu */ }
+    screenOn = false;
+    try { goForeground(); return !s; }
+    catch (RuntimeException e) { /* masih ditolak */ }
+    callOn = false; // panggilan jalan terus tanpa tipe mikrofon
+    try { goForeground(); } catch (RuntimeException e2) { /* abaikan */ }
+    return !s;
   }
 
   private void goForeground() {
@@ -128,6 +148,7 @@ public class ArchneService extends Service {
     if (Build.VERSION.SDK_INT >= 29) {
       int t = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
       if (callOn && Build.VERSION.SDK_INT >= 30) t |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE;
+      if (screenOn) t |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
       startForeground(ID_SVC, n, t);
     } else startForeground(ID_SVC, n);
   }
@@ -137,7 +158,7 @@ public class ArchneService extends Service {
     if (port == 0 || token == null) { stopSelf(); return START_NOT_STICKY; } // dihidupkan ulang sistem tanpa inti Node: tidak ada yang dijaga
     makeChannels();
     try { goForeground(); }
-    catch (RuntimeException e) { callOn = false; goForeground(); }
+    catch (RuntimeException e) { callOn = false; screenOn = false; goForeground(); }
     if (!running) {
       running = true;
       try {

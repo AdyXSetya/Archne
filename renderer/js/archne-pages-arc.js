@@ -10,7 +10,7 @@ const PG_ARC_ERR = { // getter: mengikuti bahasa aktif saat dibaca (jangan disal
   get hash() { return txf('arc.err.hash', 'Isi arsip rusak (hash tidak cocok).'); },
   get limit() { return txf('arc.err.limit', 'Arsip terlalu besar untuk diproses.'); },
 };
-let pgArcS = { can: null, open: false, phase: 'idle', kind: null, job: null, token: null, name: '', sum: null, prog: null, res: null, err: null, cm: false, cmImp: true };
+let pgArcS = { can: null, open: false, phase: 'idle', kind: null, job: null, token: null, name: '', sum: null, prog: null, res: null, err: null, cm: true, cmImp: true };
 let pgArcWired = false, pgArcBoot = false;
 const pgArcSz = (n) => (typeof FileCard !== 'undefined' && FileCard.fmtSize ? FileCard.fmtSize(n) : fmt(n) + ' B');
 const pgArcMsg = (r) => (r && PG_ARC_ERR[r.code]) || (r && r.err) || txf('arc.fail', 'Gagal memproses arsip.');
@@ -39,6 +39,24 @@ function pgArcCmLine(c) {
   return '';
 }
 
+// 5h: kalimat tentang reaksi. r = reactions dari ringkasan (pratinjau) atau hasil (impor).
+function pgArcRxLine(r) {
+  if (!r || r.status === 'none') return '';
+  const n = (x) => pgArcN(x || 0), o = { posts: n(r.posts), cmts: n(r.cmts) };
+  if (r.status === 'skipped') {
+    if (r.why === 'owner') return txf('arc.rx.owner', 'Reaksi di arsip ({posts} pada postingan, {cmts} pada komentar) tidak dibawa: arsip ini dibuat oleh identitas lain.', o);
+    if (r.why === 'abort') return txf('arc.rx.abort', 'Reaksi menunggu: impor dibatalkan. Impor ulang arsip yang sama untuk melengkapinya.');
+    return txf('arc.rx.skip', 'Reaksi tidak dipulihkan.');
+  }
+  if (r.status === 'bad') return txf('arc.rx.bad', 'Reaksi di arsip rusak dan tidak diimpor. Postingan tidak terpengaruh.');
+  if (r.status === 'pending') return txf('arc.rx.pending', 'Reaksi belum sempat diproses. Impor ulang arsip yang sama untuk melengkapinya.');
+  if (r.status === 'done') {
+    const a = r.post || {}, b = r.cmt || {}, sum = (k) => (a[k] || 0) + (b[k] || 0);
+    return txf('arc.rx.done', 'Reaksi: {added} dipulihkan, {updated} diperbarui, {same} sudah ada.', { added: n(sum('added')), updated: n(sum('updated')), same: n(sum('same')) });
+  }
+  return '';
+}
+
 function pgArcSumHtml(s, st) {
   const c = s.counts, cm = s.comments || {};
   const top = [`<b>${esc(s.name)}</b>`, esc(pgArcSz(s.size))];
@@ -58,6 +76,11 @@ function pgArcSumHtml(s, st) {
       h += `<label class="pgarcl"><input type="checkbox" id="pgarccmi" ${st.cmImp ? 'checked' : ''}> ${esc(lbl)}</label>`;
     } else h += `<div class="pgarcl dim">${esc(cm.status === 'bad' ? pgArcCmLine({ status: 'bad' }) : pgArcCmLine({ status: 'skipped', why: 'owner', items: cm.items, tombs: cm.tombs }))}</div>`;
   }
+  const rx = s.reactions || {};
+  if (rx.present) {
+    if (rx.restorable && rx.status === 'ok') h += `<div class="pgarcl">${esc(txf('arc.rx.preview', 'Reaksi ikut dipulihkan ({posts} pada postingan, {cmts} pada komentar).', { posts: pgArcN(rx.posts), cmts: pgArcN(rx.cmts) }))}</div>`;
+    else h += `<div class="pgarcl dim">${esc(rx.status === 'bad' ? pgArcRxLine({ status: 'bad' }) : pgArcRxLine({ status: 'skipped', why: 'owner', posts: rx.posts, cmts: rx.cmts }))}</div>`;
+  }
   return h;
 }
 
@@ -68,6 +91,7 @@ function pgArcResHtml(st) {
     let h = `<div class="pgarcl">${txf('arc.expDone', 'Selesai: {parts} ({size}) disimpan sebagai {name}.', { parts: esc(parts.join(', ')), size: esc(pgArcSz(r.size)), name: `<b>${esc(r.name)}</b>` })}</div>`;
     if (r.skipped) h += `<div class="pgarcl dim">${esc(pgArcC('arc.expSkipped', '{count} postingan dilewati karena lampirannya hilang atau berubah saat disalin.', r.skipped))}</div>`;
     h += r.comments ? `<div class="pgarcl">${esc(txf('arc.expCm', 'Komentar ikut: {items}, {tombs}.', { items: pgArcC('arc.nComments', '{count} komentar', r.comments.items), tombs: pgArcC('arc.nDeletions', '{count} penghapusan', r.comments.tombs) }))}</div>` : `<div class="pgarcl dim">${esc(txf('arc.expNoCm', 'Komentar tidak ikut.'))}</div>`;
+    h += r.reactions ? `<div class="pgarcl">${esc(txf('arc.expRx', 'Reaksi ikut: {posts} pada postingan, {cmts} pada komentar.', { posts: pgArcN(r.reactions.posts), cmts: pgArcN(r.reactions.cmts) }))}</div>` : `<div class="pgarcl dim">${esc(txf('arc.expNoRx', 'Belum ada reaksi untuk disimpan.'))}</div>`;
     return h;
   }
   const list = [`<b>${esc(pgArcC('arc.pImported', '{count} postingan masuk', r.imported))}</b>`, esc(txf('arc.pSame', '{count} sudah ada', { count: pgArcN(r.same) }))];
@@ -77,6 +101,7 @@ function pgArcResHtml(st) {
   let h = `<div class="pgarcl">${txf('arc.impHead', '{state}: {list}.', { state: r.aborted ? txf('arc.stCancelled', 'Dibatalkan') : txf('arc.done', 'Selesai'), list: list.join(', ') })}</div>`;
   if (r.blobs.written) h += `<div class="pgarcl">${esc(tnf('arc.blobsWritten', Number.isFinite(r.blobs.written) ? r.blobs.written : 0, '{count} lampiran ditulis ({size}).', { count: pgArcN(r.blobs.written), size: pgArcSz(r.blobs.bytes) }))}</div>`;
   const cl = pgArcCmLine(r.comments); if (cl) h += `<div class="pgarcl">${esc(cl)}</div>`;
+  const rl = pgArcRxLine(r.reactions); if (rl) h += `<div class="pgarcl">${esc(rl)}</div>`;
   if (r.aborted || r.failed) h += `<div class="pgarcl dim">${esc(txf('arc.retry', 'Impor bisa diulang: yang sudah masuk dilewati dan sisanya dilengkapi.'))}</div>`;
   return h;
 }
@@ -91,7 +116,7 @@ function pgArcHtml() {
       + `<div class="row"><button class="sec" data-pg="arcexp"${busy ? ' disabled' : ''}>${esc(txf('arc.export', 'Ekspor…'))}</button><button class="sec" data-pg="arcimp"${busy ? ' disabled' : ''}>${esc(txf('arc.import', 'Impor…'))}</button><button class="sec" data-pg="arcx">${esc(txf('arc.closePanel', 'Tutup panel'))}</button></div>`;
   }
   if (st.phase === 'preview') {
-    const s = st.sum, can = s.counts.new > 0 || (st.cmImp && s.comments && s.comments.plan && (s.comments.plan.added > 0 || s.comments.plan.tombAdded > 0));
+    const s = st.sum, can = s.counts.new > 0 || (st.cmImp && s.comments && s.comments.plan && (s.comments.plan.added > 0 || s.comments.plan.tombAdded > 0)) || !!(s.reactions && s.reactions.restorable && s.reactions.plan && (s.reactions.plan.added > 0 || s.reactions.plan.updated > 0)) || !!(s.reactions && s.reactions.restorable && s.reactions.cmts > 0);
     return head + pgArcSumHtml(s, st) + `<div class="row"><button data-pg="arcgo"${can ? '' : ' disabled'}>${esc(s.counts.new ? pgArcC('arc.importN', 'Impor {count} postingan', s.counts.new) : txf('arc.importBtn', 'Impor'))}</button><button class="sec" data-pg="arcno">${esc(txf('common.cancel', 'Batal'))}</button></div>`
       + (can ? '' : `<div class="pgarcl dim">${esc(txf('arc.nothingNew', 'Tidak ada yang baru untuk diimpor.'))}</div>`);
   }

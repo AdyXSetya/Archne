@@ -7,8 +7,8 @@ android {
         applicationId "com.xyraori.archne"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3100
-        versionName "0.31.0"
+        versionCode 3200
+        versionName "0.32.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // libnode.so (Node 24) ~120 MB per ABI, jadi ABI-lah yang menentukan ukuran APK. Bawaan: semua ABI yang disediakan plugin Node (arm64-v8a, armeabi-v7a, x86_64) supaya semua perangkat didukung.
         // Untuk APK lebih kecil: -Parchne.abis=arm64-v8a (pemisah + atau koma). AAB Google Play tetap mengirim hanya ABI yang cocok per perangkat.
@@ -59,6 +59,8 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Berbagi layar dari HP (ArchneScreen): libwebrtc native (ScreenCapturerAndroid + JavaAudioDeviceModule.AudioBufferCallback). Paket org.webrtc, ~10 MB per ABI.
+    implementation 'io.github.webrtc-sdk:android:150.7871.08'
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

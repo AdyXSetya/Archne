@@ -26,8 +26,8 @@ module.exports = {
     const o = { cid: c.cid, room: c.room, peer: c.peer, name: (p && p.name) || c.name || '?', dir: c.dir, state: legs.some((x) => x.state === 'active') ? 'active' : c.state, at: c.at, members: this._callMembers(c.room) };
     const vc = this._vcRoom(c.room); if (vc) o.vc = { gid: vc.gid, cid: vc.cid };
     const pvr = this._pvRoom(c.room); if (pvr) o.pv = { cid: pvr.cid };
-    if (c.room !== c.cid || legs.length > 1 || this._joins.has(c.room)) { o.joining = this._joins.has(c.room); o.legs = legs.map((x) => Object.assign({ cid: x.cid, peer: x.peer, name: x.name, dir: x.dir, state: x.state }, x.pst ? Object.assign({ muted: x.pst.muted, deafened: x.pst.deafened }, typeof x.pst.cam === 'boolean' ? { cam: x.pst.cam } : {}) : {})); }
-    if (c.pst) { o.muted = c.pst.muted; o.deafened = c.pst.deafened; if (typeof c.pst.cam === 'boolean') o.cam = c.pst.cam; } // status mik/deafen lawan bicara (hanya bila sudah pernah dikirim)
+    if (c.room !== c.cid || legs.length > 1 || this._joins.has(c.room)) { o.joining = this._joins.has(c.room); o.legs = legs.map((x) => Object.assign({ cid: x.cid, peer: x.peer, name: x.name, dir: x.dir, state: x.state }, x.pst ? Object.assign({ muted: x.pst.muted, deafened: x.pst.deafened }, typeof x.pst.cam === 'boolean' ? Object.assign({ cam: x.pst.cam }, x.pst.scr === true ? { scr: true } : {}) : {}) : {})); }
+    if (c.pst) { o.muted = c.pst.muted; o.deafened = c.pst.deafened; if (typeof c.pst.cam === 'boolean') { o.cam = c.pst.cam; if (c.pst.scr === true) o.scr = true; } } // status mik/deafen lawan bicara (hanya bila sudah pernah dikirim)
     const inv = [...this._invOut.keys()].filter((k) => k.startsWith(c.room + ':')).map((k) => { const id = k.slice(c.room.length + 1), q = this.peers.get(id); return { peer: id, name: (q && q.name) || '?' }; });
     if (inv.length) o.invites = inv; // undangan keluar yang menunggu jawaban (UI memangkas daftarnya sendiri bila event invitefail terlewat)
     // UI yang baru terpasang (Android: halaman dimuat ulang saat notifikasi diketuk) butuh tawaran + ICE yang sudah masuk, karena event-nya sudah lewat
@@ -137,8 +137,12 @@ module.exports = {
     } catch { return false; }
   },
   // Sinyal satu panggilan dikirim BERURUTAN (ICE tidak boleh mendahului tawaran, 'end' tidak boleh mendahului jawaban).
+  // Kandidat ICE: harus menunggu tawaran/jawaban yang sudah antre (c.q), tapi satu sama lain tidak perlu berurutan dan tidak boleh
+  // menahan pesan lain. Dikirim bersamaan (tanpa mengubah format pesan, jadi peer lama tetap paham). Satu kandidat yang lambat
+  // (batas CALL_NET_MS) tidak lagi menunda semua kandidat sesudahnya.
   _callQueue(c, payload) {
     const run = () => this._callSend(c.peer, payload);
+    if (payload && payload.t === 'ice') return c.q.then(run, run);
     c.q = c.q.then(run, run);
     return c.q;
   },
@@ -234,7 +238,7 @@ module.exports = {
     } else if (o.t === 'st') { // status mik/deafen lawan bicara (4c-2): hanya dari kaki yang aktif, bentuk ketat, jumlah dibatasi
       // v0.21.0: kabar yang tiba saat kaki ini belum aktif di sisiku (UI-ku belum memanggil callConnected) tidak lagi dibuang: yang terbaru ditahan
       // dan dipakai begitu aktif. Dulu peserta yang baru masuk tidak pernah tahu kamera orang yang sudah menyala (kartunya tidak muncul).
-      if ((c.state !== 'active' && c.state !== 'connecting' && c.state !== 'dialing') || (o.m !== 0 && o.m !== 1) || (o.d !== 0 && o.d !== 1) || (o.v !== undefined && o.v !== 0 && o.v !== 1) || ++c.stn > CALL_ST_N) return ack(true);
+      if ((c.state !== 'active' && c.state !== 'connecting' && c.state !== 'dialing') || (o.m !== 0 && o.m !== 1) || (o.d !== 0 && o.d !== 1) || (o.v !== undefined && o.v !== 0 && o.v !== 1) || (o.s !== undefined && o.s !== 0 && o.s !== 1) || ++c.stn > CALL_ST_N) return ack(true);
       if (c.state !== 'active') { c.stEarly = o.v === undefined && c.stEarly && c.stEarly.v !== undefined ? Object.assign({}, o, { v: c.stEarly.v }, c.stEarly.vt !== undefined ? { vt: c.stEarly.vt } : {}) : o; return ack(true); } // kabar tanpa v (mis. hanya mute) tidak boleh menghapus kabar kamera yang sudah ditahan
       this._callSt(c, o);
     } else if (o.t === 'room') { // anggota ruang mengumumkan: id ini diundang dan akan menelepon aku
@@ -247,8 +251,12 @@ module.exports = {
     const d = o.d === 1, mu = d || o.m === 1; // deafen selalu berarti mik mati
     const cam = o.v === undefined ? undefined : o.v === 1; // kamera hidup (opsional; peer lama tidak mengirimnya)
     const vtIn = cam === true ? (Number.isFinite(o.vt) && Math.abs(o.vt - Date.now()) < 600000 ? Math.floor(o.vt) : Date.now()) : undefined; // jam pengirim hanya dipercaya bila wajar (10 menit)
-    c.pst = Object.assign({ muted: mu, deafened: d }, cam === undefined ? (c.pst && typeof c.pst.cam === 'boolean' ? { cam: c.pst.cam, vt: c.pst.vt } : {}) : cam ? { cam, vt: c.pst && c.pst.cam === true && c.pst.vt ? c.pst.vt : vtIn } : { cam });
-    this.emit('call', Object.assign({ ev: 'peerstate', cid: c.cid, room: c.room, peer: c.peer, muted: mu, deafened: d }, cam === undefined ? {} : { cam }));
+    // Layar yang dibagikan (v0.32.0, medan s): hanya sah bila kamera-slot hidup. v=0 selalu menutup layar; s tanpa v memakai kamera terakhir yang diketahui.
+    const camNow = cam === undefined ? !!(c.pst && c.pst.cam === true) : cam;
+    const scr = !camNow || o.s === 0 ? false : o.s === 1 ? true : undefined; // undefined = tidak ada kabar baru (peer lama atau hanya mute)
+    const prevScr = !!(c.pst && c.pst.scr === true), scrKeep = scr === undefined ? prevScr && camNow : scr;
+    c.pst = Object.assign({ muted: mu, deafened: d }, cam === undefined ? (c.pst && typeof c.pst.cam === 'boolean' ? { cam: c.pst.cam, vt: c.pst.vt } : {}) : cam ? { cam, vt: c.pst && c.pst.cam === true && c.pst.vt ? c.pst.vt : vtIn } : { cam }, scrKeep ? { scr: true } : {});
+    this.emit('call', Object.assign({ ev: 'peerstate', cid: c.cid, room: c.room, peer: c.peer, muted: mu, deafened: d }, cam === undefined ? {} : { cam }, scrKeep || prevScr ? { scr: scrKeep } : {})); // medan scr hanya muncul bila ada layar (atau baru ditutup): bentuk event v0.31 tidak berubah
     if (cam === true) this._camEnforce(c.room);
   },
 };

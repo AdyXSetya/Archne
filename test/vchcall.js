@@ -232,7 +232,7 @@ const enter = async (o) => { const m = mk(o); const r = await m.ctl.enterChannel
     FakePC.all = [];
     const doc = { getElementById: (id) => els[id] || (els[id] = mkEl(id)), querySelectorAll: () => [], activeElement: null, querySelector: () => null, body: { classList: { add() {}, remove() {} } } };
     const track = { enabled: true, stop() {} };
-    const win = { api, RTCPeerConnection: FakePC, LanCall: LC, navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) } } };
+    const win = { api, addEventListener: () => {}, RTCPeerConnection: FakePC, LanCall: LC, navigator: { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [track], getAudioTracks: () => [track] }) } } };
     const ctx = { window: win, document: doc, CSS: { escape: (s) => s }, FileCard: require('../renderer/archne-filecard'), Avatar: require('../renderer/archne-avatar'), confirm: () => true, alert: () => {}, console, setInterval: () => 0, setTimeout, clearTimeout, Date, parseInt, Set, Math, JSON,
       localStorage: { getItem: () => null, setItem() {} } };
     vm.createContext(ctx);
