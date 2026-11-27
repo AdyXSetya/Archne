@@ -73,7 +73,8 @@ class Core extends EventEmitter {
     this._wanInit(); // mode lintas jaringan (v0.23.0): lihat archne-wan.js
   }
   async start() {
-    fs.mkdirSync(this.opts.dataDir, { recursive: true });
+    fs.mkdirSync(this.opts.dataDir, { recursive: true, mode: 0o700 });
+    if (process.platform !== 'win32') { try { fs.chmodSync(this.opts.dataDir, 0o700); } catch {} } // berisi kunci privat dan obrolan
     this._loadIdentity();
     this._loadSettings();
     this._loadStore();
@@ -87,7 +88,7 @@ class Core extends EventEmitter {
     this._tick();
     this._friendRetry();
     for (const g of Object.values(this.store.groups)) this._scheduleReconcile(g); // pernyataan keluar yang belum sempat diproses sebelum aplikasi ditutup
-    this.log(`core start id=${this.id} name=${this.name} tcp=${this.port}`);
+    this.log(`core start id=${this.id} name=${this.name} tcp=${this.port} msgs=${Object.keys(this.store.msgs).length} idbaru=${this._idFresh ? 1 : 0}`);
   }
   // Port tetap dulu (opts.tcpPort bila diberikan, kalau tidak DEFAULT_TCP_PORT); bila sudah dipakai, port acak.
   async _listen() {
@@ -141,6 +142,8 @@ Object.assign(Core.prototype,
   require('./archne-pubmsg-store'),
   require('./archne-settings'),
   require('./archne-wan'),
+  require('./archne-mailbox'),
+  require('./archne-mailbox-out'),
   require('./archne-relay-policy'),
   require('./archne-escrow-store'),
   require('./archne-escrow-push'),
@@ -163,6 +166,10 @@ Object.assign(Core.prototype,
   require('./archne-pages-cq'),
   require('./archne-pages-cd'),
   require('./archne-pages-new'),
+  require('./archne-web'),
+  require('./archne-web-peer'),
+  require('./archne-web-req'),
+  require('./archne-web-cache'),
   require('./archne-call-core'),
   require('./archne-call-room'),
   require('./archne-notify-state')

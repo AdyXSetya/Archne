@@ -423,7 +423,8 @@ const NOISE_MODES = ['off', 'standard', 'strong'];
     _closeLeg(l) {
       if (l.timer) { this.clearT(l.timer); l.timer = null; }
       if (l.hintT) { this.clearT(l.hintT); l.hintT = null; }
-      try { if (l.pc) { l.pc.onicecandidate = l.pc.ontrack = l.pc.onconnectionstatechange = null; l.pc.close(); } } catch {}
+      try { if (l.pc) { l.pc.onicecandidate = l.pc.ontrack = l.pc.onconnectionstatechange = l.pc.oniceconnectionstatechange = l.pc.onicecandidateerror = l.pc.onnegotiationneeded = null; l.pc.close(); } } catch {}
+      l.pc = null; // lepas rujukan agar RTCPeerConnection bisa dikumpulkan GC
       try { if (l.stopAudio) l.stopAudio(); } catch {}
       l.stopAudio = null; l.remote = null; l.vremote = null; l.vsender = null;
     }

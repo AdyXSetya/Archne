@@ -1,8 +1,7 @@
 'use strict';
 // Setup otomatis lintas OS (Windows / Linux / macOS / Termux).
-//   node scripts/auto.js            -> setup + tes cepat + cetak cara menjalankan
+//   node scripts/auto.js            -> setup + cetak cara menjalankan
 //   node scripts/auto.js setup      -> hanya cek Node + pasang dependensi
-//   node scripts/auto.js test       -> setup + jalankan seluruh tes
 //   node scripts/auto.js serve      -> setup + jalankan mode peramban (server.js)
 // Build installer .exe dan APK memakai PowerShell (Windows): lihat auto.bat.
 const fs = require('fs'), path = require('path'), cp = require('child_process');
@@ -38,15 +37,6 @@ if (needElectron && !fs.existsSync(path.join(root, 'node_modules', 'electron', '
 }
 
 if (cmd === 'setup') { log('Setup selesai.'); process.exit(0); }
-
-// 2. tes (tidak menggagalkan setup; tes yang gagal dicatat di logs/test.log)
-if (cmd === 'test' || cmd === 'all') {
-  log('Menjalankan tes' + (cmd === 'all' ? ' (ringkas)' : '') + '...');
-  const r = run('node', ['test/run-all.js']);
-  if (r.status !== 0) log('Ada tes gagal. Lihat keluaran di atas.');
-  else log('Semua tes lulus.');
-  if (cmd === 'test') process.exit(r.status || 0);
-}
 
 if (cmd === 'serve') { log('Menjalankan mode peramban...'); run('node', ['server.js']); process.exit(0); }
 

@@ -1,6 +1,6 @@
 {
   "name": "archne-mobile",
-  "version": "0.32.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Cangkang Android Archne (Capacitor 8 + Node 24 bawaan @capawesome/capacitor-nodejs). Bukan paket yang dipublikasikan.",
   "dependencies": {

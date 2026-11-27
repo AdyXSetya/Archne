@@ -97,7 +97,7 @@ SET_SECTIONS.push({
 
 // Tab samping (desktop) / tab atas yang bisa digeser (HP): bagian dikelompokkan per topik. Semua bagian tetap digambar (yang tidak aktif hanya disembunyikan) supaya ketikan dan pilihan di tab lain ikut tersimpan saat Simpan.
 const SET_TABS = [
-  { id: 'general', icon: 'gear', secs: ['lang', 'theme'], get title() { return txf('set.tab.general', 'Umum'); } },
+  { id: 'general', icon: 'gear', secs: ['lang', 'theme', 'app'], get title() { return txf('set.tab.general', 'Umum'); } },
   { id: 'network', icon: 'relay', secs: ['relay', 'direct'], get title() { return txf('set.tab.network', 'Jaringan'); } },
   { id: 'storage', icon: 'db', secs: ['storage', 'media'], get title() { return txf('set.tab.storage', 'Penyimpanan'); } },
   { id: 'pages', icon: 'home', secs: ['pages'], get title() { return txf('set.tab.pages', 'Halaman'); } },

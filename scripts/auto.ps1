@@ -3,11 +3,10 @@
 #   auto.bat desktop              -> hanya installer Windows (portable + NSIS)
 #   auto.bat android              -> hanya APK
 #   auto.bat all -Release         -> APK rilis bertanda tangan
-#   auto.bat all -Test            -> jalankan npm test dulu (tidak menggagalkan build)
 #   auto.bat android -Install     -> pasang APK ke HP via adb setelah build
 param(
   [ValidateSet('all', 'desktop', 'android')][string]$Target = 'all',
-  [switch]$Release, [switch]$Test, [switch]$Install
+  [switch]$Release, [switch]$Install
 )
 . "$PSScriptRoot\_common.ps1"
 . "$PSScriptRoot\_android.ps1"
@@ -18,15 +17,6 @@ try {
   $nodeMajor = [int]((& node -v).TrimStart('v').Split('.')[0])
   if ($nodeMajor -lt 22) { Log "PERINGATAN: package.json meminta Node >= 22 (terpasang: $nodeMajor). Build tetap dicoba." }
   Ensure-Deps
-
-  if ($Test) {
-    Log 'Menjalankan npm test...'
-    cmd /c "npm.cmd test > `"$Root\logs\test.log`" 2>&1"
-    if ($LASTEXITCODE -ne 0) {
-      Log 'Ada tes gagal (rincian lengkap di logs\test.log). Build dilanjutkan. Tes yang gagal:'
-      Get-Content "$Root\logs\test.log" | Where-Object { $_ -match '^(FAIL |RINGKASAN GAGAL)' } | ForEach-Object { Log ("  " + $_) }
-    } else { Log 'Semua tes lulus.' }
-  }
 
   if ($Target -eq 'all' -or $Target -eq 'desktop') {
     Log '=== Desktop: installer Windows ==='

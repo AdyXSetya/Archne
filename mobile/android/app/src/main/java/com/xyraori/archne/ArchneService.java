@@ -563,6 +563,30 @@ public class ArchneService extends Service {
     try { nm(this).notify(id, b.build()); } catch (RuntimeException e) { /* izin notifikasi ditolak */ }
   }
 
+  /**
+   * Langkah 3e: inti Node menerima ajakan sambung lintas jaringan (offer/want) saat UI tidak tampil. WebRTC hanya bisa jalan di WebView,
+   * jadi layanan menampilkan notifikasi; ketukannya membuka aplikasi dan UI memutar ulang signal yang tertahan (3d). Dibersihkan bersama notifikasi chat.
+   */
+  private void showWake(String from, String who) {
+    if (visible || from.length() == 0) return;
+    String name = who.length() > 0 ? who : "Archne";
+    int id = idOf("wake:" + from);
+    synchronized (chats) { missedIds.add(Integer.valueOf(id)); }
+    Notification.Builder b = builder(CH_MSG)
+      .setSmallIcon(smallIcon(this))
+      .setColor(ACCENT)
+      .setLargeIcon(avatar(from, name, null))
+      .setContentTitle(name)
+      .setContentText(ArchneLang.s(this, "wake_text", name))
+      .setCategory(Notification.CATEGORY_MESSAGE)
+      .setWhen(System.currentTimeMillis())
+      .setShowWhen(true)
+      .setAutoCancel(true)
+      .setContentIntent(openApp(this, from, null, id));
+    if (Build.VERSION.SDK_INT < 26) b.setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL);
+    try { nm(this).notify(id, b.build()); } catch (RuntimeException e) { /* izin notifikasi ditolak */ }
+  }
+
   private void onCallEvent(JSONObject o) {
     String ev = o.optString("ev"), cid = o.optString("cid"), peer = o.optString("peer");
     if ("incoming".equals(ev)) {
@@ -614,6 +638,9 @@ public class ArchneService extends Service {
           else if (line.isEmpty()) {
             if ("call".equals(ev) && data != null) {
               try { onCallEvent(new JSONObject(data)); } catch (Exception e) { /* data rusak: lewati */ }
+            } else if ("wake".equals(ev) && data != null) {
+              try { JSONObject w = new JSONObject(data); showWake(w.optString("from", ""), w.optString("who", "")); }
+              catch (Exception e) { /* data rusak: lewati */ }
             } else if ("notify".equals(ev) && data != null) {
               try { show(new JSONObject(data)); }
               catch (Exception e) { /* data rusak: lewati */ }

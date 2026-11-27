@@ -26,7 +26,7 @@ module.exports = {
   // Pesan lama (hasil sinkronisasi riwayat) tidak memicu notifikasi.
   notifyOf(m) {
     if (!m || m.from === this.id || m.kind === 'ginv' || this.isBlocked(m.from)) return null;
-    if (Date.now() - this._dts(m) > NOTIFY_MAX_AGE) return null;
+    if (Date.now() - this._dts(m) > NOTIFY_MAX_AGE && !(this._mbFresh && this._mbFresh.has(m.id))) return null; // titipan kotak surat boleh berumur berhari-hari: yang dihitung saat tiba
     const key = m.to === 'public' ? 'public' : String(m.to).startsWith('g:') ? m.to : m.from;
     if (!this.notifyOn(key)) return null;
     let text = m.kind ? this._open(m) : m.text;
@@ -60,6 +60,7 @@ module.exports = {
     const msgs = Object.values(this.store.msgs).filter((m) => m.kind !== 'ginv' && !hid[m.id] && !byBlocked(m) && !this._isCtlMsg(m))
       .map((m) => {
         const o = { id: m.id, from: m.from, to: m.to, ts: this._dts(m), name: m.name, text: m.text, status: this.store.status[m.id] || null };
+        if (o.status === 'pending' && m.from === this.id) { const mb = this.mailboxStatus(m.id); if (mb) { o.mb = mb.state; if (mb.why) o.mbwhy = mb.why; } } // 4e: antre / dititipkan / gagal di kotak surat
         if (m.kind) {
           const t = this._open(m);
           o.text = t === null ? '🔒 (tidak bisa didekripsi)' : t;
@@ -98,7 +99,7 @@ module.exports = {
         return o;
       });
     const all = msgs.concat(notes).sort((a, b) => a.ts - b.ts).slice(-500);
-    const peers = [...this.peers.values()].filter((p) => !blk[p.id]).map((p) => ({ id: p.id, name: p.name, ip: p.ip, port: p.port, online: this.isOnline(p), secure: !!p.xpub, lan: this._directOk(p.ip), friend: this.fstate(p.id) === 'ok', fst: this.fstate(p.id) }));
+    const peers = [...this.peers.values()].filter((p) => !blk[p.id]).map((p) => ({ id: p.id, name: p.name, ip: p.ip, port: p.port, online: this.isOnline(p), bg: this.peerLive(p) === 'bg', secure: !!p.xpub, lan: this._directOk(p.ip), friend: this.fstate(p.id) === 'ok', fst: this.fstate(p.id) }));
     const groups = Object.values(this.store.groups).map((g) => Object.assign(this._pubGroup(g), { channels: this.vcList(g.id), av: g.av ? 'data:image/jpeg;base64,' + g.av : '' })); // channel voice (v0.19.0) ikut state supaya UI yang terlambat terpasang langsung tahu
     const bios = {}; // deskripsi semua orang yang tampil di UI (peer, anggota grup, aku)
     const avatars = {}; // foto (data URL) hanya untuk yang punya
@@ -108,6 +109,6 @@ module.exports = {
       if (av) avatars[id] = 'data:image/jpeg;base64,' + av;
     }
     const blocked = Object.entries(blk).map(([id, r]) => ({ id, name: (this.peers.get(id) || {}).name || r.name || '?', at: r.at })).sort((a, b) => b.at - a.at);
-    return { me: { id: this.id, name: this.name, port: this.port, bio: this.bioOf(this.id), addrs: this.myAddrs() }, wan: this.wanInfo(), peers, groups, blocked, bios, avatars, notif: Object.assign({}, this.store.notif), call: this.callInfo(), vc: this._vcMe ? { gid: this._vcMe.gid, cid: this._vcMe.cid } : null, pv: { me: this._pvMe ? this._pvMe.cid : null, channels: this.pvList() }, pins: this.pinAll(), calls: this._callsOut(blk), messages: all, limits: { maxText: MAX_TEXT, pin: { max: Pins.PIN_MAX_LIVE, text: Pins.PIN_TEXT_MAX }, maxFile: Pack.LIMITS, maxBio: PROF_MAX, avatarDim: 128, avatarMax: AV_MAX } };
+    return { me: { id: this.id, name: this.name, port: this.port, bio: this.bioOf(this.id), addrs: this.myAddrs() }, wan: Object.assign(this.wanInfo(), this.mailboxOutEnabled() ? { mbox: true } : {}), peers, groups, blocked, bios, avatars, notif: Object.assign({}, this.store.notif), call: this.callInfo(), vc: this._vcMe ? { gid: this._vcMe.gid, cid: this._vcMe.cid } : null, pv: { me: this._pvMe ? this._pvMe.cid : null, channels: this.pvList() }, pins: this.pinAll(), calls: this._callsOut(blk), messages: all, limits: { maxText: MAX_TEXT, pin: { max: Pins.PIN_MAX_LIVE, text: Pins.PIN_TEXT_MAX }, maxFile: Pack.LIMITS, maxBio: PROF_MAX, avatarDim: 128, avatarMax: AV_MAX } };
   },
 };

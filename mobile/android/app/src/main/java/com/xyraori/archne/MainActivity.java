@@ -7,6 +7,8 @@ import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Rational;
 import android.view.View;
 import android.view.WindowManager;
@@ -23,14 +25,41 @@ public class MainActivity extends BridgeActivity {
 
   @Override
   public void onCreate(Bundle savedInstanceState) {
+    // Reset data yang belum selesai (sistem menolak hapus-penyimpanan): sapu SEBELUM inti Node dan WebView memakai datanya.
+    ArchneExit.wipeIfPending(this);
     // Plugin lokal harus didaftarkan sebelum super.onCreate.
     registerPlugin(ArchneAudio.class);
     registerPlugin(ArchneDownloads.class);
     registerPlugin(ArchneBackground.class);
     registerPlugin(ArchneScreen.class);
     super.onCreate(savedInstanceState);
+    stripSiteBridges();
     edgeToEdge();
     ring(getIntent());
+  }
+
+  /**
+   * Spike A.2 (HP asli, 23 Nov 2026): CapacitorCookies dan CapacitorHttp memanggil addJavascriptInterface di load() TANPA syarat
+   * (config `enabled:false` hanya mematikan penambalan JS, bukan pendaftaran objeknya), dan addJavascriptInterface menyuntikkan objek ke SEMUA frame,
+   * termasuk iframe situs lintas-origin ber-sandbox. Akibatnya situs bisa memanggil CapacitorCookiesAndroidInterface.setCookie(domain, nilai) (menulis cookie
+   * ke CookieManager native untuk URL mana pun, mis. origin UI) dan isEnabled(). Archne tidak memakai kedua jalur itu (config bawaan = nonaktif, dan native-bridge.js
+   * menjaganya dengan `typeof ... !== 'undefined'`), jadi objeknya dicabut. Jembatan sebenarnya (androidBridge) memakai addWebMessageListener dengan daftar origin dan
+   * hanya main frame, jadi tidak ikut bocor (terbukti di log HP: androidBridge tidak terlihat dari situs).
+   * Pencabutan berlaku untuk dokumen/frame yang dibuat sesudahnya; load() plugin berjalan di dalam super.onCreate (Bridge), sebelum halaman pertama selesai dimuat.
+   * Dipanggil juga di onResume (idempoten) sebagai pengaman bila Bridge dibuat ulang.
+   */
+  private void stripSiteBridges() {
+    try {
+      if (getBridge() == null || getBridge().getWebView() == null) return;
+      getBridge().getWebView().removeJavascriptInterface("CapacitorCookiesAndroidInterface");
+      getBridge().getWebView().removeJavascriptInterface("CapacitorHttpAndroidInterface");
+    } catch (RuntimeException e) { /* tanpa pencabutan: uji penampil di HP akan menunjukkannya */ }
+  }
+
+  @Override
+  public void onResume() {
+    super.onResume();
+    stripSiteBridges();
   }
 
   /**
@@ -143,9 +172,32 @@ public class MainActivity extends BridgeActivity {
     try { if (getBridge() != null) getBridge().triggerWindowJSEvent("archnepip", inPip ? "{\"on\":true}" : "{\"on\":false}"); } catch (RuntimeException e) { /* cukup jalur plugin */ }
   }
 
+  /**
+   * Lintas jaringan (MQTT + WebRTC) berjalan di WebView. Android menjeda WebView saat aplikasi ke latar belakang (timer berhenti, WebSocket putus).
+   * Selama ArchneBackground.keepAlive menyala, WebView dilanjutkan lagi (sama seperti PiP). Proses sendiri dijaga layanan latar depan.
+   * Idempoten; aman dipanggil kapan saja. Tidak berbuat apa-apa bila keepAlive mati (perilaku bawaan).
+   */
+  void keepWebView() {
+    if (!ArchneBackground.keepAlive) return;
+    try {
+      if (getBridge() == null || getBridge().getWebView() == null) return;
+      getBridge().getWebView().onResume();
+      getBridge().getWebView().resumeTimers();
+    } catch (RuntimeException e) { /* gagal menjaga = perilaku bawaan Android */ }
+  }
+
+  @Override
+  public void onPause() {
+    super.onPause();
+    keepWebView();
+    // Jeda bisa diterapkan Chromium sesudah onPause kembali: tegaskan sekali lagi sebentar kemudian.
+    if (ArchneBackground.keepAlive) new Handler(Looper.getMainLooper()).postDelayed(new Runnable() { @Override public void run() { keepWebView(); } }, 500);
+  }
+
   @Override
   public void onStop() {
     super.onStop();
+    keepWebView();
     if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(false); setTurnScreenOn(false); }
   }
 }

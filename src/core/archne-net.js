@@ -7,11 +7,12 @@ const { DEFAULT_TCP_PORT, HEX16, ONLINE_MS, PX_MAX, PX_MS, PX_PROBE, SYNC_MS, SY
 const { broadcastAddrs, localAddrs, parseAddr, privateIp, verifyHelloKeys, vpnish } = require('./archne-util');
 const Transport = require('../archne-transport');
 
-const CAPS = ['rx', 'pg', 'pgm', 'pgr', 'pgc', 'pgd', 'pgt', 'pgk']; // PERHATIAN: capsOf memotong sampai 8 entri dan daftar ini sudah penuh (tambah kemampuan lagi = naikkan batas itu dulu). 'pg' = melayani Halaman (pg_list / pg_get); 'pgm' = juga melayani potongan gambar (pg_media, 2d-2); 'pgr' = juga menerima reaksi (pg_rx, 4a-3); 'pgc' = juga melayani komentar (pg_cmt / pg_cml, 4b-2); 'pgd' = juga menerima permintaan hapus komentar oleh penulisnya (pg_cmd, 5e); 'pgt' = juga menerima balasan komentar (pg_cmt dengan c.re, 5f); 'pgk' = juga menerima reaksi pada komentar (pg_rc) dan menyertakan reaksi komentar di jawaban pg_cml (5g)
-const capsOf = (c) => (Array.isArray(c) ? c.filter((x) => typeof x === 'string' && /^[a-z0-9]{1,8}$/.test(x)).slice(0, 8) : []);
+const CAPS = ['rx', 'pg', 'pgm', 'pgr', 'pgc', 'pgd', 'pgt', 'pgk', 'lw1']; // PERHATIAN: capsOf memotong sampai CAPS_MAX (12) entri (tambah kemampuan lagi = naikkan batas itu dulu). 'lw1' = melayani Web Lokal (lw_list / lw_manifest / lw_file, 0.34.0 Fase C); 'pg' = melayani Halaman (pg_list / pg_get); 'pgm' = juga melayani potongan gambar (pg_media, 2d-2); 'pgr' = juga menerima reaksi (pg_rx, 4a-3); 'pgc' = juga melayani komentar (pg_cmt / pg_cml, 4b-2); 'pgd' = juga menerima permintaan hapus komentar oleh penulisnya (pg_cmd, 5e); 'pgt' = juga menerima balasan komentar (pg_cmt dengan c.re, 5f); 'pgk' = juga menerima reaksi pada komentar (pg_rc) dan menyertakan reaksi komentar di jawaban pg_cml (5g)
+const CAPS_MAX = 12;
+const capsOf = (c) => (Array.isArray(c) ? c.filter((x) => typeof x === 'string' && /^[a-z0-9]{1,8}$/.test(x)).slice(0, CAPS_MAX) : []);
 
 module.exports = {
-  hello() { return { id: this.id, name: this.name, port: this.port, pub: this.pub, xpub: this.xpub, xsig: this.xsig, caps: CAPS }; }, // caps: kemampuan protokol ('rx' = reaksi); peer lama tidak mengirimnya
+  hello() { return { id: this.id, name: this.name, port: this.port, pub: this.pub, xpub: this.xpub, xsig: this.xsig, caps: this._phpServe ? CAPS.concat('lw2') : CAPS }; }, // caps: kemampuan protokol ('rx' = reaksi); peer lama tidak mengirimnya
   isOnline(p) { return !!p && Date.now() - p.lastSeen < ONLINE_MS; },
   noteHello(h, ip) {
     if (!h || !HEX16.test(String(h.id)) || h.id === this.id || !Number.isInteger(h.port)) return;
@@ -134,6 +135,8 @@ module.exports = {
     }
     // Ada peer yang baru offline: jangan menunggu jadwal berkala, tanyakan kabar kurir/pemegang berkas ke peer lain sekarang juga.
     if (wentOff) for (const s of this._sy.values()) s.next = 0;
+    // Peer hadir di broker tetapi link-nya mati (HP terkunci / aplikasi di latar) dan ada pesan yang menunggu: bangunkan, tanpa menunggu pengguna membuka chat.
+    for (const p of this.peers.values()) if (this._present.size && !this.isOnline(p) && this._present.has(p.id) && this._pendingTo(p.id)) this.wakePeer(p.id);
     for (const p of this.peers.values()) {
       if (this.isOnline(p) && !this.isBlocked(p.id)) {
         this._flushOutbox(p); this._periodicSync(p); this._pushTick(p); this._pcqTick(p); this._pgnTick(p);

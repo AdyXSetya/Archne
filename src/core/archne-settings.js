@@ -55,6 +55,7 @@ module.exports = {
     if (j && j.autoImg === 'off') S.autoImg = 'off'; // unduh foto otomatis: bawaan 'lan' (kuncinya tidak ada); hanya 'off' yang disimpan
     if (j && j.pagesServe === false) S.pagesServe = false; // 5a-1: melayani Halaman ke peer lain; bawaan aktif (kuncinya tidak ada); hanya false yang disimpan
     for (const k of PGS) if (j && k in j) { if (pgsOk(k, j[k])) { if (j[k] !== PG_VSTREAM_LIM[k][1]) S[k] = j[k]; } else this.log('settings: ' + k + ' tidak sah, pakai bawaan'); } // 5a-2: nilai di luar batas dibuang (bukan dijepit: tidak ada yang "hampir benar"); nilai bawaan tidak disimpan
+    if (j && 'phpWorkers' in j) { if (Number.isSafeInteger(j.phpWorkers) && j.phpWorkers >= 1) S.phpWorkers = j.phpWorkers; else this.log('settings: phpWorkers tidak sah, pakai otomatis'); } // jumlah Worker PHP aktif pilihan pemilik: bilangan bulat >= 1, TANPA batas atas buatan; tidak ada kunci = otomatis menurut RAM
     if (j && 'directDir' in j) { if (dirOk(j.directDir)) S.directDir = path.resolve(j.directDir); else this.log('settings: directDir tidak sah, pakai bawaan'); } // folder yang belum ada/tak terpasang tidak dibuang: dibuat/dicoba lagi saat menerima
     this._settings = S;
     this._applySettings();
@@ -62,7 +63,7 @@ module.exports = {
   _saveSettings(S) {
     const f = this._settingsFile();
     fs.mkdirSync(path.dirname(f), { recursive: true });
-    fs.writeFileSync(f + '.tmp', JSON.stringify(Object.assign({ v: 1 }, S)));
+    fs.writeFileSync(f + '.tmp', JSON.stringify(Object.assign({ v: 1 }, S)), { mode: 0o600 });
     try { fs.copyFileSync(f, f + '.bak'); } catch {}
     fs.renameSync(f + '.tmp', f);
   },
@@ -94,7 +95,7 @@ module.exports = {
       items[k] = { value: k in this._settings ? this._settings[k] : sp.def, def: sp.def, min: sp.min, custom: k in this._settings };
       if (sp.max !== undefined) items[k].max = sp.max;
     }
-    return { ok: true, items, usage: this.settingsUsage(), theme: this._settings.theme || 'system', lang: this._settings.lang || 'en', direct: { dir: this._directDir(), def: this._directDirDef(), custom: !!this._settings.directDir }, autoImg: { mode: this._autoImgMode(), def: 'lan', max: AUTO_IMG_MAX }, pages: { serve: this._settings.pagesServe !== false, def: true, streams: Object.assign({ def: { max: PG_VSTREAM_LIM.pgStreamMax[1], peer: PG_VSTREAM_LIM.pgStreamPeer[1] }, min: { max: PG_VSTREAM_LIM.pgStreamMax[0], peer: PG_VSTREAM_LIM.pgStreamPeer[0] }, ceil: { max: PG_VSTREAM_LIM.pgStreamMax[2], peer: PG_VSTREAM_LIM.pgStreamPeer[2] } }, this._pgStreamLimits()) } };
+    return { ok: true, items, usage: this.settingsUsage(), php: { workers: Number.isSafeInteger(this._settings.phpWorkers) ? this._settings.phpWorkers : null }, theme: this._settings.theme || 'system', lang: this._settings.lang || 'en', direct: { dir: this._directDir(), def: this._directDirDef(), custom: !!this._settings.directDir }, autoImg: { mode: this._autoImgMode(), def: 'lan', max: AUTO_IMG_MAX }, pages: { serve: this._settings.pagesServe !== false, def: true, streams: Object.assign({ def: { max: PG_VSTREAM_LIM.pgStreamMax[1], peer: PG_VSTREAM_LIM.pgStreamPeer[1] }, min: { max: PG_VSTREAM_LIM.pgStreamMax[0], peer: PG_VSTREAM_LIM.pgStreamPeer[0] }, ceil: { max: PG_VSTREAM_LIM.pgStreamMax[2], peer: PG_VSTREAM_LIM.pgStreamPeer[2] } }, this._pgStreamLimits()) } };
   },
   // 5a-2: batas stream video bersamaan { max: per Core, peer: per pemilik jauh }. Dibaca tiap panggilan (berlaku seketika); stream yang sudah berjalan tidak dipotong (lihat pageMedia).
   _pgStreamLimits() {
@@ -136,6 +137,13 @@ module.exports = {
         if (v < PG_VSTREAM_LIM[k][0]) return { ok: false, code: 'min', key: k, min: PG_VSTREAM_LIM[k][0] };
         if (v > PG_VSTREAM_LIM[k][2]) return { ok: false, code: 'max', key: k, max: PG_VSTREAM_LIM[k][2] };
         if (v === PG_VSTREAM_LIM[k][1]) delete next[k]; else next[k] = v;
+        continue;
+      }
+      if (k === 'phpWorkers') { // jumlah Worker PHP aktif: null/'default'/'auto' = otomatis (kuncinya dibuang); selain itu bilangan bulat >= 1 (satu-satunya pagar: angka yang mustahil secara teknis)
+        if (v === null || v === 'default' || v === 'auto') { delete next.phpWorkers; continue; }
+        if (!Number.isSafeInteger(v)) return { ok: false, code: 'bad', key: k };
+        if (v < 1) return { ok: false, code: 'min', key: k, min: 1 };
+        next.phpWorkers = v;
         continue;
       }
       if (k === 'directDir') { // folder Kirim Langsung: null/'default' = bawaan; selain itu path absolut yang bisa dibuat dan ditulisi (galat 'dir')

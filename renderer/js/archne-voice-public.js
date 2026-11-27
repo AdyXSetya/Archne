@@ -258,6 +258,6 @@ $('main').addEventListener('drop', (e) => {
 });
 $('myaddr').onclick = async () => {
   const txt = ((S.me.addrs || []).map((a) => a.addr)).join(', '); if (!txt) return;
-  try { await navigator.clipboard.writeText(txt); toast(txf('addr.copied', 'Alamat disalin: {addr}. Kirim ke temanmu, lalu tempel di kolom bawah sidebar miliknya.', { addr: txt }), true); }
-  catch { toast(txf('addr.manual', 'Alamatmu: {addr} (salin manual)', { addr: txt }), true); }
+  if (await copyText(txt)) toast(txf('addr.copied', 'Alamat disalin: {addr}. Kirim ke temanmu, lalu tempel di kolom bawah sidebar miliknya.', { addr: txt }), true);
+  else toast(txf('addr.manual', 'Alamatmu: {addr} (salin manual)', { addr: txt }), true);
 };

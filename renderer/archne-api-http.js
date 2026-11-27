@@ -20,21 +20,33 @@
     'react', 'reactWho', 'reactRecent', 'rxSupport',
     'getSettings', 'setSettings',
     'pgAvail', 'pgList', 'pgGet', 'pgImage', 'pgVideo', 'pgReact', 'pgComment', 'pgComments', 'pgCmtReact', 'pgCommentQueue', 'pgCommentPending', 'pgCommentCancel', 'pgCmtRemove', 'pgCmtDelete', 'pgFileGet', 'pgFileCancel', 'pgMine', 'pgCreate', 'pgSetDl', 'pgRemove', 'pgNewList', 'pgArcExport', 'pgArcOpen', 'pgArcImport', 'pgArcCancel', 'pgArcState',
+    'webCronList', 'webCronAdd', 'webCronUpdate', 'webCronRemove', 'webCronRun', 'webCronLog', 'webCronLogClear', 'webCronCheck',
+    'webAvail', 'webList', 'webMine', 'webCreate', 'webUpdate', 'webRemove', 'webCheckDomain', 'webPreview',
+    'webFiles', 'webFileRead', 'webFileView', 'webFileWrite', 'webMkdir', 'webRename', 'webMove', 'webDelete', 'webZipList', 'webZipExtract', 'webZipExport', 'webAssetScan', 'webOfflineStart', 'webOfflineCancel', 'webOfflineStatus', 'webOfflineDiscard', 'webOfflineApply', 'webOfflineUndoInfo', 'webOfflineUndo', 'webDash', 'webDashPhp', 'webDbList', 'webDbTables', 'webDbRows', 'webDbInsert', 'webDbUpdate', 'webDbDelete', 'webDbExport', 'webDbImport', 'webDbCreate', 'webDbDrop', 'webDbReset', 'webDbExec', 'webDbCsv', 'webDbMysqlChoose', 'webDbMysqlCommit', 'webDbMysqlCancel', 'webDbMysqlExport', 'webDbMysqlExportCancel', 'webDbMysqlCreate', 'webDbMysqlStart', 'webDbMysqlStop',
     'dxState', 'dxPick', 'dxSend', 'dxCancelScan', 'dxAccept', 'dxDecline', 'dxPause', 'dxResume', 'dxCancel', 'dxCancelOut', 'dxRemove', 'dxChooseDir', 'dxOpenDir',
-    'wanSettings', 'wanEnable', 'wanBroker', 'wanRotate', 'inviteMake', 'invitePeek', 'inviteApply', 'turnInfo', 'turnSet', 'turnClear', 'turnIce', 'wanInfo', 'wanNewCode', 'wanSetCode', 'wanClear', 'wanTopics', 'wanSeal', 'wanOpen', 'rtcIn', 'rtcStatus', 'wsOpen', 'wsSend', 'wsClose'];
+    'wanSettings', 'wanEnable', 'wanBroker', 'wanRotate', 'mailboxSet', 'mailboxRetry', 'inviteMake', 'invitePeek', 'inviteApply', 'turnInfo', 'turnSet', 'turnClear', 'turnIce', 'wanInfo', 'wanNewCode', 'wanSetCode', 'wanClear', 'wanTopics', 'wanSeal', 'wanOpen', 'wanHostView', 'wanHostSignal', 'wanHostAck', 'rtcIn', 'rtcStatus', 'wsOpen', 'wsSend', 'wsClose'];
 
   // Tindakan bawaan perangkat (buka berkas) diteruskan ke cangkang (halaman induk Android) lewat postMessage.
   function native(n) {
     try { if (window.parent && window.parent !== window) window.parent.postMessage({ archne: 'native', action: n.action, path: n.path, name: n.name }, '*'); } catch {}
   }
 
+  // Panggilan singkat yang dipolling UI diberi tenggat: bila inti Node macet / beku (mis. HP menidurkan proses), fetch tidak pernah selesai dan UI
+  // menunggu selamanya ("Memuat..." sampai aplikasi dihentikan paksa). Dengan tenggat, panggilan gagal, kunci di UI terlepas, dan polling berikutnya
+  // otomatis mencoba lagi begitu inti hidup kembali. Panggilan lain (unduh, unggah, tugas panjang) sengaja tanpa tenggat.
+  const RPC_MS = { webDash: 15000, webDashPhp: 45000, webCronList: 15000, webCronLog: 15000, webCronCheck: 15000, webAvail: 15000, webList: 20000, webMine: 15000 };
   async function rpc(name, args) {
-    let r;
+    let r, timer = null, ctl = null, hit = false;
+    const ms = RPC_MS[name];
+    if (ms && typeof AbortController === 'function') { ctl = new AbortController(); timer = setTimeout(() => { hit = true; try { ctl.abort(); } catch {} }, ms); }
     try {
-      r = await fetch(BASE + 'rpc/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args) });
-    } catch (e) { return { ok: false, err: tr('api.noCore', 'Tidak tersambung ke inti aplikasi') }; }
-    if (!r.ok) return { ok: false, err: tr('api.httpErr', 'Galat {code}', { code: r.status }) };
-    const j = await r.json();
+      r = await fetch(BASE + 'rpc/' + name, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(args), signal: ctl ? ctl.signal : undefined });
+      if (!r.ok) return { ok: false, err: tr('api.httpErr', 'Galat {code}', { code: r.status }) };
+      var j = await r.json(); // badan jawaban ikut dalam tenggat
+    } catch (e) {
+      if (hit) return { ok: false, code: 'timeout', err: tr('api.timeout', 'Inti aplikasi tidak menjawab. Mencoba lagi otomatis.') };
+      return { ok: false, err: tr('api.noCore', 'Tidak tersambung ke inti aplikasi') };
+    } finally { if (timer) clearTimeout(timer); }
     if (j && typeof j === 'object' && j.native) { native(j.native); delete j.native; }
     return j;
   }
@@ -53,6 +65,7 @@
   });
   api.pathOf = (file) => file || ''; // "sumber berkas": File itu sendiri
   api.captureSave = undefined; // hanya Electron (hasil kamera disimpan lewat path). Di sini hasil kamera dikirim sebagai File lewat sendFile/upload; UI memeriksa typeof === 'function'.
+  api.appQuit = undefined; api.appReset = undefined; // hanya Electron (Pengaturan > Aplikasi, lewat IPC). Di Android tombolnya memakai pesan ke cangkang; di peramban/Termux tidak ada. UI memeriksa typeof === 'function' (renderer/js/archne-settings-app.js).
 
   api.sendFile = async (job, src, to, media) => {
     if (typeof src === 'string') return rpc('sendFile', [job, src, to, media]);
@@ -64,6 +77,22 @@
       up = await r.json();
     } catch (e) { return { ok: false, err: tr('api.prepFile', 'Gagal menyiapkan berkas: {m}', { m: (e && e.message) || e }) }; }
     return rpc('sendFile', [job, up.path, to, media]);
+  };
+
+  // Unggah ke situs Web Lokal (Fase E.3): srcs = jalur (Electron) atau objek File (Android/peramban: diunggah dulu ke inti lewat /upload, lalu jalurnya dikirim).
+  api.webUpload = async (id, dir, srcs, o) => {
+    if (!Array.isArray(srcs) || !srcs.length) return { ok: false, err: tr('api.badFile', 'Berkas tidak valid') };
+    const paths = [];
+    for (const src of srcs) {
+      if (typeof src === 'string') { paths.push(src); continue; }
+      if (!src || typeof src.size !== 'number') return { ok: false, err: tr('api.badFile', 'Berkas tidak valid') };
+      try {
+        const r = await fetch(BASE + 'upload?keep=1&name=' + encodeURIComponent(src.name || 'berkas'), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: src });
+        if (!r.ok) throw new Error('Galat ' + r.status);
+        paths.push((await r.json()).path);
+      } catch (e) { return { ok: false, err: tr('api.prepFile', 'Gagal menyiapkan berkas: {m}', { m: (e && e.message) || e }) }; }
+    }
+    return rpc('webUpload', [id, dir, paths, o]);
   };
 
   // Pesan suara (Step 4): sama dengan sendFile, tetapi lewat jalur sendiri. Hasil rekaman di Android/peramban berupa File yang diunggah dulu.
@@ -92,7 +121,7 @@
   };
 
   // Event: satu EventSource untuk semuanya. Saat tersambung ulang, minta UI menyegarkan diri.
-  const L = { update: [], removed: [], fprog: [], dxprog: [], pgdl: [], pgcq: [], pgnew: [], pgact: [], pgarc: [], dxscan: [], call: [], vcpres: [], pvpres: [], pvkick: [], rtcb: [] };
+  const L = { update: [], removed: [], fprog: [], dxprog: [], pgdl: [], pgcq: [], pgnew: [], pgact: [], pgarc: [], dxscan: [], webprog: [], sitestate: [], webzip: [], weboff: [], webcron: [], webdbprog: [], call: [], vcpres: [], pvpres: [], pvkick: [], rtcb: [], wanst: [], wanpeers: [], wansig: [] };
   let es = null, was = false;
   function connect() {
     if (es) return;
@@ -108,11 +137,20 @@
     es.addEventListener('pgact', (e) => fire('pgact', JSON.parse(e.data)));
     es.addEventListener('pgarc', (e) => fire('pgarc', JSON.parse(e.data)));
     es.addEventListener('dxscan', (e) => fire('dxscan', JSON.parse(e.data)));
+    es.addEventListener('webprog', (e) => fire('webprog', JSON.parse(e.data)));
+    es.addEventListener('webzip', (e) => fire('webzip', JSON.parse(e.data)));
+    es.addEventListener('weboff', (e) => fire('weboff', JSON.parse(e.data)));
+    es.addEventListener('webcron', (e) => fire('webcron', JSON.parse(e.data)));
+    es.addEventListener('webdbprog', (e) => fire('webdbprog', JSON.parse(e.data)));
+    es.addEventListener('sitestate', (e) => fire('sitestate', JSON.parse(e.data)));
     es.addEventListener('call', (e) => fire('call', JSON.parse(e.data)));
     es.addEventListener('vcpres', (e) => fire('vcpres', JSON.parse(e.data)));
     es.addEventListener('pvpres', (e) => fire('pvpres', JSON.parse(e.data)));
     es.addEventListener('pvkick', (e) => fire('pvkick', JSON.parse(e.data)));
     es.addEventListener('rtcb', (e) => fire('rtcb', JSON.parse(e.data)));
+    es.addEventListener('wanst', (e) => fire('wanst', JSON.parse(e.data))); // lintas jaringan di inti Node (2c): status, daftar peer, signal masuk
+    es.addEventListener('wanpeers', (e) => fire('wanpeers', JSON.parse(e.data)));
+    es.addEventListener('wansig', (e) => fire('wansig', JSON.parse(e.data)));
     es.onopen = () => { if (was) { fire('update'); fire('rtcb', { op: 'reconnect' }); } was = true; }; // SSE putus-sambung: event yang lewat hilang, jembatan lintas jaringan harus mulai ulang (rtcglue)
   }
   api.onUpdate = (cb) => { L.update.push(cb); connect(); };
@@ -125,14 +163,33 @@
   api.onPgAct = (cb) => { L.pgact.push(cb); connect(); };
   api.onPgArc = (cb) => { L.pgarc.push(cb); connect(); };
   api.onDxScan = (cb) => { L.dxscan.push(cb); connect(); };
+  api.onWebProg = (cb) => { L.webprog.push(cb); connect(); };
+  api.onWebZip = (cb) => { L.webzip.push(cb); connect(); };
+  api.onWebOff = (cb) => { L.weboff.push(cb); connect(); };
+  api.onWebCron = (cb) => { L.webcron.push(cb); connect(); };
+  api.onWebDbProg = (cb) => { L.webdbprog.push(cb); connect(); };
   api.onCall = (cb) => { L.call.push(cb); connect(); };
   api.onVcPres = (cb) => { L.vcpres.push(cb); connect(); };
   api.onPvPres = (cb) => { L.pvpres.push(cb); connect(); };
   api.onPvKick = (cb) => { L.pvkick.push(cb); connect(); };
   api.onRtcb = (cb) => { L.rtcb.push(cb); connect(); };
+  api.onWanSt = (cb) => { L.wanst.push(cb); connect(); };
+  api.onWanPeers = (cb) => { L.wanpeers.push(cb); connect(); };
+  api.onWanSig = (cb) => { L.wansig.push(cb); connect(); };
   // Peramban dalam aplikasi (v0.25.1): hanya Electron. Sengaja undefined (bukan RPC): renderer memeriksa typeof === 'function'
   // dan, bila tidak ada, meneruskan tautan ke cangkang Android (InAppBrowser) atau membuka tab baru.
   api.webOpen = api.webNav = api.webBounds = api.webClose = api.webExternal = api.onWebState = undefined;
+  // Penampil situs Web Lokal (0.34.0 F.3.3b): sisi server sudah ada (archne-sitesession.js lewat RPC siteOpen/siteNav/siteRefresh/siteBounds/siteClose/siteExternal/siteExtNo + kejadian 'sitestate'),
+  // dan penampilnya (iframe + bilah, js/archne-siteviewer.js + js/archne-sitebar.js) sudah ada. Renderer memeriksa typeof api.siteOpen === 'function' untuk memilih bilah.
+  // Penjaga ini DIPERTAHANKAN sebagai sakelar: archne-index.html memasang window.ARCHNE_SITE_VIEWER = true SEBELUM berkas ini dimuat (F.3.5d); halaman tanpa penampil tidak memasangnya dan jatuh ke pesan lw.viewerSoon.
+  // Balasan siteOpen/siteRefresh memuat `url` (src iframe) dan state-nya memuat `url`; riwayat (kembali / maju / muat ulang) dijalankan iframe, bukan server (siteNav -> code 'client').
+  if (window.ARCHNE_SITE_VIEWER === true) {
+    for (const n of ['siteOpen', 'siteNav', 'siteRefresh', 'siteBounds', 'siteClose', 'siteExternal', 'siteExtNo', 'siteWarnAck']) api[n] = (...a) => rpc(n, a);
+    api.onSiteState = (cb) => { L.sitestate.push(cb); connect(); };
+    api.onSiteExt = () => {}; // tautan keluar tidak lewat server di sini (siteExternal selalu "gone")
+  } else {
+    api.siteOpen = api.siteNav = api.siteRefresh = api.siteBounds = api.siteClose = api.siteExternal = api.siteExtNo = api.siteWarnAck = api.onSiteState = api.onSiteExt = undefined;
+  }
   api.onScreenPick = api.screenPickDone = undefined; // pemilih layar Archne hanya di Electron (v0.32.0 C.2); peramban memakai pemilih bawaannya lewat getDisplayMedia
   api.onWs = () => {}; // jalur WebSocket cadangan hanya ada di Electron (proses utama); di HTTP tidak ada kejadian ws
 

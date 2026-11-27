@@ -146,6 +146,7 @@ function uiBack() {
     if (v && vidFocus && LC.videoView(v)) { vidFocus = null; callBar = true; callCtl._render(); return true; }
     if (v && LC.canMinimize(v) && !callMin) { callMin = true; callPick = false; callCtl._render(); return true; }
   } catch (x) {}
+  if (typeof lwBackKey === 'function' && lwBackKey()) return true; // Web Lokal (0.34.0 D.5): formulir -> daftar -> obrolan; dialog konfirmasi didahulukan (lwBackKey false saat #dlg tampil)
   return backModal();
 }
 // </back>

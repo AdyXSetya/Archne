@@ -20,15 +20,6 @@ try { Get-NetConnectionProfile | ForEach-Object { $out.Add("$($_.Name): $($_.Net
 $out.Add("`n--- Aturan firewall Archne ---")
 try { $r = Get-NetFirewallRule -DisplayName 'Archne*' -ErrorAction SilentlyContinue; if ($r) { $r | ForEach-Object { $out.Add("$($_.DisplayName) enabled=$($_.Enabled) action=$($_.Action)") } } else { $out.Add("(belum ada, jalankan firewall.bat sebagai admin atau klik Allow saat popup)") } } catch {}
 
-$out.Add("`n--- Tes logika inti (npm test) ---")
-cmd /c "node test\test.js > `"$Root\logs\test.log`" 2>&1"
-$out.Add("exit code: $LASTEXITCODE")
-$out.AddRange([string[]](Get-Content "$Root\logs\test.log"))
-
-$out.Add("`n--- Tes UDP broadcast di mesin ini ---")
-cmd /c "node test\udp.js > `"$Root\logs\udp.log`" 2>&1"
-$out.AddRange([string[]](Get-Content "$Root\logs\udp.log"))
-
 $appLog = Join-Path $env:APPDATA 'archne\logs\app.log'
 $out.Add("`n--- app.log (80 baris terakhir): $appLog ---")
 if (Test-Path $appLog) { $out.AddRange([string[]](Get-Content $appLog -Tail 80)) } else { $out.Add("(belum ada, aplikasi belum pernah dijalankan)") }

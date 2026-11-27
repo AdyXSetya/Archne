@@ -29,7 +29,9 @@ module.exports = {
           this._escPutServe(sock, o, ip); return;
         }
         const r = this._handle(o, ip);
-        if (r) { r.hi = this.hello(); sock.end(JSON.stringify(r) + '\n'); }
+        if (r && typeof r.then === 'function') { // balasan async (lw_manifest menghitung hash berkas): kirim begitu siap; galat tak terduga = putuskan koneksi, tidak membocorkan apa pun
+          r.then((x) => { if (x && !sock.destroyed) { x.hi = this.hello(); sock.end(JSON.stringify(x) + '\n'); } }, () => { sock.destroy(); });
+        } else if (r) { r.hi = this.hello(); sock.end(JSON.stringify(r) + '\n'); }
       }
     };
     sock.on('data', onData);
@@ -46,6 +48,8 @@ module.exports = {
       case 'dx_done': return this._dxCtl(o, rid0);
       case 'dx_cancel': return this._dxOut.has(String(o.id)) ? this._dxCtl(o, rid0) : this._dxCtlIn(o, rid0);
       case 'pg_list': case 'pg_get': case 'pg_media': case 'pg_rx': case 'pg_rc': case 'pg_cmt': case 'pg_cml': case 'pg_cmd': return this._pgGate(o); // Halaman (1c-2); identitas dibuktikan tanda tangan (1c-3b), bukan hi.id
+      case 'lw_list': case 'lw_manifest': case 'lw_file': return this._lwGate(o); // Web Lokal (0.34.0 Fase C); identitas dibuktikan tanda tangan, bukan hi.id
+      case 'lw_req': case 'lw_rup': case 'lw_rbody': return this._lwReqGate(o); // situs PHP lewat jaringan (0.34.0 Fase P.5); identitas dibuktikan tanda tangan
       case 'call': return this._callIn(o.m);
       case 'pvch': return { t: 'ack', ok: blk ? true : this._pvIngest(o.m) !== 'bad' }; // kontrol channel publik; yang kublokir diabaikan diam-diam
       case 'msg': {
@@ -230,7 +234,13 @@ module.exports = {
       // state (anggota, admin, pemilik, kunci epoch) diproses PERTAMA, sebelum pesan: pesan grup dan pesan kontrol sematan dinilai dengan keadaan grup terbaru
       // (kunci epoch baru, siapa admin sekarang), jadi tidak ada yang tertolak atau salah dinilai hanya karena datang lebih dulu dari state-nya dalam satu jawaban.
       const list = [].concat(cm.filter(isStateMsg), Array.isArray(r.msgs) ? r.msgs : [], Array.isArray(r.gmsgs) ? r.gmsgs : [], cm.filter((m) => !isStateMsg(m)));
-      for (const m of list) { const x = this._ingest(m); if (x === 'new') n++; else if (x === 'carried') c++; }
+      // Tiap 40 pesan beri giliran ke event loop: memasukkan 500 pesan sekaligus (verifikasi tanda tangan + pembukuan) menahan inti Node berdetik-detik di HP,
+      // dan selama itu RPC UI (Dasbor, Cron) serta permintaan peer lain (Web Lokal) tidak terlayani.
+      let k = 0;
+      for (const m of list) {
+        const x = this._ingest(m); if (x === 'new') n++; else if (x === 'carried') c++;
+        if (++k % 40 === 0) { await new Promise((res) => setImmediate(res)); if (this.stopped) break; }
+      }
       for (const m of (Array.isArray(r.pvm) ? r.pvm : []).slice(0, 800)) if (this._pvIngest(m) === 'new') n++;
       let pc = 0;
       for (const pf of (Array.isArray(r.pf) ? r.pf : []).slice(0, 300)) if (this._addProfile(pf)) pc++;

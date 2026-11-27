@@ -1,6 +1,6 @@
 'use strict';
 // src/core/archne-wan.js — mode lintas jaringan (double NAT): transport rtc:<id>, kode jaringan, signaling terenkripsi, ICE/TURN, undangan.
-// Dipindah dari archne-core.js monolit v0.22.0 ke mixin (v0.23.0); perilaku sama. Rancangan: docs/PLAN_mode_lintas_jaringan.md.
+// Dipindah dari archne-core.js monolit v0.22.0 ke mixin (v0.23.0); perilaku sama.
 // Kode jaringan dan kredensial TURN hanya ada di Core (store.wan / store.turn); UI hanya menerima netId, topik, dan bungkus opak.
 const net = require('net');
 const Transport = require('../archne-transport');
@@ -9,11 +9,14 @@ const Turn = require('../archne-turn');
 const Invite = require('../archne-invite');
 const I18N = require('./archne-i18n-node');
 const { ek } = require('./archne-ecode');
+const { HEX16 } = require('./archne-constants');
 
 module.exports = {
   // Dipanggil constructor (archne-index.js): turunan kode (netId/netKey, hanya di memori), iv signaling yang sudah terlihat, transport, konfigurasi ICE.
   _wanInit() {
     this._wan = null; this._wanSeen = new Map();
+    this._present = new Map(); // id -> { name, at }: peer yang hadir di broker (presence), TERPISAH dari lastSeen/isOnline (link). Diisi host lewat wanPresence().
+    this._wakeAt = new Map(); // id -> waktu bangunkan terakhir (jeda antar bangunkan)
     this._rtc = null; // transport peer rtc:<id> (attachTransport); null = hanya TCP/LAN
     this._turn = Turn.createTurn(this.opts.turn || {}); // konfigurasi ICE lintas jaringan; kredensial hanya di Core
   },
@@ -49,7 +52,7 @@ module.exports = {
     this._save(); this.emit('update');
     return w.netId;
   },
-  wanClear() { delete this.store.wan; if (this.store.wanCfg) delete this.store.wanCfg.enabled; this._wan = null; this._wanSeen.clear(); this._save(); this.emit('update'); return true; },
+  wanClear() { delete this.store.wan; if (this.store.wanCfg) delete this.store.wanCfg.enabled; this._wan = null; this._wanSeen.clear(); this._present.clear(); this._save(); this.emit('update'); return true; },
   wanInfo() { const w = this._wanCtx(); return w ? { enabled: true, netId: w.netId } : { enabled: false }; },
 
   // ---- langkah 5: ICE (STUN/TURN) ----
@@ -72,7 +75,7 @@ module.exports = {
   // store.wanCfg = { enabled, broker }; kode di store.wan.code. UI menyalakan atau mematikan tumpukan MQTT/WebRTC mengikuti wanSettings().
   wanSettings() {
     const w = this._wanCtx(), c = this.store.wanCfg || {};
-    return { enabled: !!(w && c.enabled), hasCode: !!w, netId: w ? w.netId : null, broker: c.broker || Invite.DEFAULT_BROKER, defaultBroker: Invite.DEFAULT_BROKER, turn: this._turn.info() };
+    return { enabled: !!(w && c.enabled), hasCode: !!w, netId: w ? w.netId : null, broker: c.broker || Invite.DEFAULT_BROKER, defaultBroker: Invite.DEFAULT_BROKER, turn: this._turn.info(), mailbox: this.mailboxSettings() };
   },
   _wanCfgSet(patch) { this.store.wanCfg = Object.assign({}, this.store.wanCfg, patch); this._save(); this.emit('update'); },
   // Saklar. Menyalakan tanpa kode: buat kode acak baru (jaringan baru milik pengguna ini).
@@ -125,6 +128,53 @@ module.exports = {
     const r = WanCrypto.open(this._wanMe(), w, { topic, payload, now: Date.now(), seen: this._wanSeen });
     if (!r || this.store.blocked[r.from]) return null;
     return { type: r.type, from: r.from, to: r.to, ts: r.ts, body: r.body };
+  },
+
+  // ---- presence broker (terpisah dari link) ----
+  // isOnline(p) = ada lalu lintas di link (LAN/WebRTC) dalam ONLINE_MS. Itu BENAR untuk menentukan jalur kirim langsung, tetapi bukan "kehadiran":
+  // HP yang dikunci tetap hadir di broker (inti Node hidup), sementara link WebRTC di WebView-nya membeku. Presence broker menjawab "dia ada di jaringan?".
+  // Host (archne-wanhost.js) memanggil wanPresence(list) tiap daftar presence berubah (list = [{ id, name }]; [] bila broker putus atau mode dimatikan).
+  wanPresence(list) {
+    const next = new Map();
+    for (const x of Array.isArray(list) ? list.slice(0, 500) : []) {
+      if (!x || !HEX16.test(String(x.id)) || x.id === this.id) continue;
+      next.set(x.id, { name: String(x.name || '').slice(0, 32), at: Date.now() });
+    }
+    let ch = next.size !== this._present.size;
+    if (!ch) for (const id of next.keys()) if (!this._present.has(id)) { ch = true; break; }
+    this._present = next;
+    for (const id of [...this._wakeAt.keys()]) if (!next.has(id)) this._wakeAt.delete(id);
+    if (ch) this.emit('update');
+    return ch;
+  },
+  isPresent(id) { return this._present.has(String(id)) && !this.isBlocked(String(id)); },
+  // 'on' = link hidup (isOnline); 'bg' = hadir di broker tetapi link mati (aplikasinya di latar belakang / belum tersambung); 'off' = tidak terlihat sama sekali.
+  peerLive(p) { return !p ? 'off' : this.isOnline(p) ? 'on' : this.isPresent(p.id) ? 'bg' : 'off'; },
+  // Minta peer bg menyambung: host mengirim 'want' lewat broker (membangunkan layanan latar di HP). Dibatasi jeda per peer. Hasil: true bila permintaan dipicu.
+  // Hanya event; yang mengirim adalah host (wanhost), jadi Core tetap tanpa jaringan.
+  wakePeer(id, gapMs) {
+    id = String(id);
+    if (!HEX16.test(id) || this.isBlocked(id) || !this._present.has(id) || this.isOnline(this.peers.get(id))) return false;
+    const now = Date.now(), gap = gapMs == null ? 30000 : gapMs, last = this._wakeAt.get(id) || 0;
+    if (now - last < gap) return false;
+    this._wakeAt.set(id, now);
+    this.emit('wakepeer', { id });
+    return true;
+  },
+  // Tunggu sampai peer online (link hidup) paling lama `ms`. Membangunkan peer bg dulu. Hasil: 'on' | 'bg' (hadir tetapi link tidak terbentuk) | 'off'.
+  peerWait(id, ms) {
+    id = String(id);
+    const st = () => this.peerLive(this.peers.get(id));
+    if (st() === 'on') return Promise.resolve('on');
+    if (st() === 'off') return Promise.resolve('off');
+    this.wakePeer(id, 5000);
+    return new Promise((res) => {
+      let done = false, t = null;
+      const fin = () => { if (done) return; done = true; clearTimeout(t); this.removeListener('update', chk); this.removeListener('tick', chk); res(st()); };
+      const chk = () => { if (this.stopped || st() !== 'bg') fin(); };
+      this.on('update', chk); this.on('tick', chk);
+      t = setTimeout(fin, Math.max(0, Number(ms) || 0)); if (t.unref) t.unref();
+    });
   },
 
   // Pasang transport untuk peer "rtc:<id>" (lihat src/archne-transport.js untuk kontraknya). Hanya satu; memasang lagi menggantikan yang lama.

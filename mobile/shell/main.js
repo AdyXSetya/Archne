@@ -36,14 +36,18 @@ const onArcPicked = (p) => {
   const f = p && typeof p.path === 'string' ? p.path : '';
   w.resolve(path.isAbsolute(f) ? f : '');
 };
-const onPgArc = (ev, p) => { // ekspor selesai: salin ke Download. Gagal / batal: buang salinan privat.
-  if (ev !== 'pgarc' || !p || p.kind !== 'export' || !exportFile) return;
+const onPgArc = (ev, p) => { // ekspor selesai: salin ke Download. Gagal / batal: buang salinan privat. Berlaku juga untuk ekspor ZIP situs (event 'webzip', U2).
+  const zipEv = ev === 'webzip' && p && (p.phase === 'done' || p.phase === 'error');
+  if (!zipEv && (ev !== 'pgarc' || !p || p.kind !== 'export')) return;
+  if (!exportFile) return;
   if (p.phase === 'done') { const f = exportFile; exportFile = ''; post('saved', { path: f, name: path.basename(f) }); }
   else if (p.phase === 'error' || p.phase === 'cancel') { try { fs.rmSync(exportFile, { force: true }); } catch {} exportFile = ''; }
 };
 
+let rtRef = null; // diisi sesudah startHeadless; onWake memakainya belakangan
 (async () => {
   const { startHeadless } = require('./src/archne-headless');
+  const { makeOnWake } = require('./src/archne-wakepost');
   const rt = await startHeadless({
     dataDir: path.join(base, 'data'),
     downloadDir: path.join(base, 'downloads'),
@@ -51,11 +55,17 @@ const onPgArc = (ev, p) => { // ekspor selesai: salin ke Download. Gagal / batal
     host: '127.0.0.1',
     directShown: 'Download/file_transfer', // Kirim Langsung: berkas diterima di folder privat aplikasi lalu disalin ke sini (folder publik)
     canOpenFolder: false,
+    // UI Archne dimuat sebagai iframe di cangkang http://localhost (tanpa port). frame-ancestors memeriksa SELURUH rantai induk, jadi cangkang ikut terdaftar; tanpanya penampil situs diblokir (F.3.6).
+    siteAncestors: (p) => ['http://127.0.0.1:' + p, 'http://localhost'],
     canNotify: true,
     pickSave, pickArc, onEvent: onPgArc, // cadangan Halaman: tombol Ekspor / Impor di Halamanku
     canDirectCopy: true, // Kirim Langsung dari HP: berkas dikirim dari lokasi aslinya; yang path-nya tak terbaca disalin ke cache aplikasi (dxout) dan dihapus saat transfer berakhir
+    php: true, // Mesin PHP (0.34.0 P.2/P.3): PHP-WASM di Worker, dimuat malas (situs statis tidak membayar apa pun). Butuh @php-wasm + stub fs-ext di www/nodejs (scripts/mobile-php.js); gagal dimuat = tanpa PHP, bukan galat fatal
+    onWake: makeOnWake(() => rtRef && rtRef.rpc, log), // 3e: offer/want masuk saat UI di latar -> kejadian SSE 'wake' -> ArchneService menampilkan "X ingin tersambung"
+    wanHost: true, // Lintas jaringan (2c): MQTT presence + signaling hidup di inti Node, tahan saat WebView dijeda; UI memakainya lewat wanHostView / event wan*
     log,
   });
+  rtRef = rt;
   // Berkas yang selesai diterima: minta cangkang menyalinnya ke folder Download publik perangkat.
   rt.core.on('file', (e) => {
     if (e && e.phase === 'done' && typeof e.path === 'string') post('saved', { path: e.path, name: path.basename(e.path) });
@@ -73,5 +83,11 @@ const onPgArc = (ev, p) => { // ekspor selesai: salin ke Download. Gagal / batal
   // Aplikasi bisa dibuka ulang saat inti Node masih hidup (layanan latar belakang): halaman baru menanyakan port dan token lagi.
   channel.on('archne:hello', announce);
   channel.on('archne:arcpicked', onArcPicked);
+  // Keluar / Reset data (Pengaturan > Aplikasi): cangkang meminta inti berhenti RAPI (jaringan ditutup, tulisan tertunda selesai) sebelum prosesnya dimatikan atau datanya dihapus. Dijawab 'archne:stopped'.
+  let stopping = null;
+  channel.on('archne:quit', () => {
+    if (!stopping) stopping = (async () => { try { await rt.stop(); } catch (x) { log('stop gagal ' + x); } })();
+    stopping.then(() => post('stopped', {}));
+  });
   announce();
 })().catch(fatal);

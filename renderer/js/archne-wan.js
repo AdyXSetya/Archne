@@ -2,7 +2,8 @@
 // Dimuat terakhir: memakai $, esc, toast dari js/archne-state-util.js. Core memegang kode dan kunci; UI hanya relay string opak.
 // ---- lintas jaringan (langkah 6): layar Pengaturan + penyatu tumpukan MQTT/WebRTC (renderer/archne-wansetup.js) ----
 const wanLibs = typeof ArchneWanSetup !== 'undefined' && typeof ArchneWan !== 'undefined' && typeof ArchneRtcMux !== 'undefined' && typeof ArchneRtcGlue !== 'undefined';
-const wanApp = !wanLibs ? { sync: () => Promise.resolve(), on() {}, view: () => ({ state: 'error', err: txf('wan.libsMissing', 'Berkas lintas jaringan tidak termuat'), peers: [] }) } : ArchneWanSetup.createWanApp({ api: window.api, mqtt: window.mqtt, nativeWs: (window.api && window.api.wsOpen && typeof ArchneNativeWs !== 'undefined') ? ArchneNativeWs.createNativeWs(window.api) : null, createWan: ArchneWan.createWan, createRtcMux: ArchneRtcMux.createRtcMux, createRtcGlue: ArchneRtcGlue.createRtcGlue, MUX_WINDOW: ArchneRtcGlue.MUX_WINDOW, RTCPeerConnection: window.RTCPeerConnection, base64: location.protocol !== 'file:', getName: () => (S.me && S.me.name) || 'Anon' });
+const wanRemoteLib = typeof ArchneWanRemote !== 'undefined' ? ArchneWanRemote.createWanRemote : undefined; // 2c: presence + signaling di inti Node (dipakai bila api.wanHostView ada; selain itu jalur MQTT di UI)
+const wanApp = !wanLibs ? { sync: () => Promise.resolve(), on() {}, view: () => ({ state: 'error', err: txf('wan.libsMissing', 'Berkas lintas jaringan tidak termuat'), peers: [] }) } : ArchneWanSetup.createWanApp({ api: window.api, mqtt: window.mqtt, nativeWs: (window.api && window.api.wsOpen && typeof ArchneNativeWs !== 'undefined') ? ArchneNativeWs.createNativeWs(window.api) : null, createWan: ArchneWan.createWan, createWanRemote: wanRemoteLib, createRtcMux: ArchneRtcMux.createRtcMux, createRtcGlue: ArchneRtcGlue.createRtcGlue, MUX_WINDOW: ArchneRtcGlue.MUX_WINDOW, RTCPeerConnection: window.RTCPeerConnection, base64: location.protocol !== 'file:', getName: () => (S.me && S.me.name) || 'Anon' });
 let wanSet = null;
 const WAN_ST = { // getter: dibaca saat dipakai (mengikuti bahasa aktif)
   get waiting() { return txf('wan.st.waiting', 'menunggu'); }, get connecting() { return txf('wan.st.connecting', 'menyambung'); }, get direct() { return txf('wan.st.direct', 'langsung'); }, get relay() { return txf('wan.st.relay', 'lewat relay'); }, get failed() { return txf('wan.st.failed', 'gagal'); },
@@ -88,7 +89,16 @@ function wanTurnFields() {
   if (t.provider === p) for (const el of $('turnf').querySelectorAll('input[data-k]')) { const v = t[el.dataset.k]; if (v && el.type === 'text') el.value = Array.isArray(v) ? v.join(', ') : v; }
   $('turnsave').style.display = p === 'none' ? 'none' : '';
 }
+// Android: WebView dijeda di latar belakang dan MQTT/WebRTC ikut mati. Selama lintas jaringan menyala, minta cangkang menjaga WebView tetap berjalan (langkah 1 latar belakang).
+let wanKeepLast = null;
+function wanKeep() {
+  const on = !!(wanSet && wanSet.enabled);
+  if (on === wanKeepLast) return;
+  wanKeepLast = on;
+  try { if (window.parent && window.parent !== window) window.parent.postMessage({ archne: 'native', action: 'wankeep', on }, '*'); } catch (x) { /* bukan di cangkang Android */ }
+}
 function wanRender() {
+  wanKeep();
   const v = wanApp.view(), set = wanSet || {};
   const b = $('wanbtn'); b.className = 'ibtn' + (set.enabled && v.state === 'online' ? ' on' : set.enabled && v.state === 'connecting' ? ' busy' : '');
   b.title = txf('wan.title', 'Lintas jaringan') + (set.enabled && v.state === 'online' ? ' · ' + tnf('wan.btnOnline', v.peers.length, 'tersambung, {count} perangkat online', { count: v.peers.length }) : set.enabled && v.state === 'connecting' ? ' · ' + txf('wan.btnConnecting', 'menyambung…') : '');
@@ -104,7 +114,15 @@ function wanRender() {
   $('wanpeers').innerHTML = v.peers.length ? v.peers.map((p) => `<div class="wpeer"><span class="nm">${esc(p.name || '?')}</span><span class="ws ${p.state}" title="${esc(p.note || '')}">${WAN_ST[p.state]}${p.state === 'failed' && p.note ? ': ' + esc(p.note) : ''}</span></div>`).join('') : '<div class="wempty">' + esc(txf('wan.noPeers', 'Belum ada perangkat lain yang online di jaringan ini.')) + '</div>';
 }
 wanApp.on('change', wanRender);
-async function wanLoad() { const r = await window.api.wanSettings(); if (r && r.ok) wanSet = r.settings; const hasT = wanSet && wanSet.turn && wanSet.turn.provider !== 'none'; $('wanwtl').style.display = hasT ? 'flex' : 'none'; if (!hasT) $('wanwt').checked = false; wanWarn(); if (document.activeElement !== $('wanbroker')) $('wanbroker').value = wanSet ? wanSet.broker : ''; $('turnp').value = wanSet && wanSet.turn ? wanSet.turn.provider : 'none'; wanTurnFields(); wanRender(); }
+async function wanLoad() { const r = await window.api.wanSettings(); if (r && r.ok) { wanSet = r.settings; wanKeep(); } const hasT = wanSet && wanSet.turn && wanSet.turn.provider !== 'none'; $('wanwtl').style.display = hasT ? 'flex' : 'none'; if (!hasT) $('wanwt').checked = false; wanMb(); wanWarn(); if (document.activeElement !== $('wanbroker')) $('wanbroker').value = wanSet ? wanSet.broker : ''; $('turnp').value = wanSet && wanSet.turn ? wanSet.turn.provider : 'none'; wanTurnFields(); wanRender(); }
+function wanMb() { // 4e: pengaturan titip pesan (kotak surat)
+  const mb = wanSet && wanSet.mailbox; if (!mb) return;
+  $('mbout').checked = !!mb.out;
+  const opts = [...$('mbttl').options]; const d = Math.round(mb.ttlMs / 864e5); const o = opts.find((x) => +x.value === d); if (o) $('mbttl').value = o.value;
+  [...$('mbttl').options].forEach((x) => { x.textContent = tnf('wan.mbDays', +x.value, '{count} hari', { count: +x.value }); });
+  $('mbttl').disabled = !mb.out;
+  $('mbinfo').textContent = mb.out && (mb.queued || mb.deposited || mb.failed) ? txf('wan.mbInfo', 'Antre {q} · dititipkan {d} · gagal {f}', { q: mb.queued, d: mb.deposited, f: mb.failed }) : '';
+}
 function wanWarn() { $('wanwarn').textContent = $('wanwt').checked ? txf('wan.warnTurn', 'Siapa pun yang memegang undangan ini bisa masuk jaringanmu dan memakai TURN-mu.') : txf('wan.warn', 'Siapa pun yang memegang undangan ini bisa masuk jaringanmu.'); }
 async function wanAct(fn, okMsg) { const r = await fn(); if (!r || !r.ok) { toast((r && r.err) || txf('common.failed', 'Gagal')); await wanLoad(); return false; } if (okMsg) toast(okMsg, true); wanPeekC.clear(); await wanLoad(); await wanApp.sync(); wanRender(); return true; }
 const wanClose = () => { $('wanmodal').style.display = 'none'; };
@@ -113,10 +131,12 @@ $('wanclose').onclick = wanClose;
 $('wanmodal').onclick = (e) => { if (e.target === $('wanmodal')) wanClose(); };
 $('wanon').onchange = () => wanAct(() => window.api.wanEnable($('wanon').checked));
 $('wanwt').onchange = wanWarn;
+$('mbout').onchange = () => wanAct(() => window.api.mailboxSet($('mbout').checked, +$('mbttl').value * 864e5));
+$('mbttl').onchange = () => wanAct(() => window.api.mailboxSet(undefined, +$('mbttl').value * 864e5));
 $('wanjoin').onclick = async () => { const t = $('wanpaste').value.trim(); if (!t) return; if (await wanAct(() => window.api.inviteApply(t), txf('wan.joined', 'Bergabung ke jaringan'))) { $('wanpaste').value = ''; render(); } };
 $('wanpaste').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); $('wanjoin').onclick(); } };
 $('wanmk').onclick = async () => { if (!wanSet || !wanSet.hasCode) { if (!(await wanAct(() => window.api.wanEnable(true)))) return; } const r = await window.api.inviteMake($('wanwt').checked); if (!r || !r.ok) { toast((r && r.err) || txf('wan.mkFail', 'Gagal membuat undangan')); return; } $('wanout').value = r.text; $('wanout').style.display = $('wancp').style.display = ''; $('wanout').select(); };
-$('wancp').onclick = async () => { try { await navigator.clipboard.writeText($('wanout').value); toast(txf('wan.copied', 'Undangan disalin'), true); } catch { $('wanout').select(); toast(txf('wan.ctrlC', 'Tekan Ctrl+C untuk menyalin')); } };
+$('wancp').onclick = async () => { if (await copyText($('wanout').value)) toast(txf('wan.copied', 'Undangan disalin'), true); else { $('wanout').select(); toast(txf('wan.ctrlC', 'Tekan Ctrl+C untuk menyalin')); } };
 let rotT = null;
 $('wanrot').textContent = txf('wan.rot', 'Ganti kode'); // HTML awal tidak ber-data-i18n (teks ditimpa JS)
 $('wanrot').onclick = async () => { // dua ketukan (confirm() bisa diblokir di WebView Android)

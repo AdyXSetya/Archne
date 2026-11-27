@@ -54,6 +54,8 @@ if (typeof document !== 'undefined' && document.addEventListener) {
     const t = e.target; if (!t || !t.closest) return;
     const cp = t.closest('[data-lcopy]');
     if (cp) { e.preventDefault(); e.stopPropagation(); const u = wbLinkOf(cp.closest('[data-url],[data-inv]')); if (u) mmCopy(u, txf('copy.link', 'Tautan')); return; }
+    const sa = t.closest('a.lns'); // tautan situs (archne://domain.archne@id): penampil, bukan peramban web
+    if (sa) { e.preventDefault(); e.stopPropagation(); if (typeof slOpen === 'function') slOpen(sa.dataset.sdom, sa.dataset.speer); return; }
     const a = t.closest('a.lnk');
     if (a) { e.preventDefault(); e.stopPropagation(); wbOpen(a.getAttribute('href')); }
   }, true);

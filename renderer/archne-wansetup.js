@@ -3,7 +3,9 @@
 // (api.wanSettings), dan menyajikan status untuk layar Pengaturan. Semua bagian disuntikkan, jadi bisa dites tanpa jaringan.
 // Dimuat dengan <script src="archne-wansetup.js"> (global `ArchneWanSetup`); di Node (tes) lewat require().
 //
-//   const app = createWanApp({ api, mqtt, createWan, createRtcMux, createRtcGlue, MUX_WINDOW, RTCPeerConnection?, base64?, getName? })
+//   const app = createWanApp({ api, mqtt, createWan, createWanRemote?, createRtcMux, createRtcGlue, MUX_WINDOW, RTCPeerConnection?, base64?, getName? })
+//   Langkah 2c: bila inti Node memegang MQTT (api.wanHostView menjawab ok), presence + signaling dipakai lewat createWanRemote dan UI TIDAK membuka MQTT sendiri.
+//   Bila tidak (Electron, peramban, host tidak ada / galat), jalur lama: createWan + mqtt di UI.
 //   await app.sync()   // baca pengaturan Core; mulai / henti / mulai ulang bila berubah. Aman dipanggil berkali-kali (diserialkan).
 //   app.view()         // { state: 'off'|'connecting'|'online'|'error', err, broker, peers: [{ id, name, state, note }] }
 //   app.on('change', cb); await app.stop()
@@ -38,12 +40,21 @@
       try { const r = await api.turnIce(); if (r && r.ok && Array.isArray(r.iceServers)) return r.iceServers; } catch (e) { /* STUN bawaan rtcmux */ }
       return undefined;
     }
+    async function hostAvailable() { // inti Node memegang MQTT? Galat / tenggat = tidak ada (jalur lama)
+      if (!o.createWanRemote || typeof api.wanHostView !== 'function') return false;
+      let t;
+      try {
+        const r = await Promise.race([Promise.resolve(api.wanHostView()), new Promise((_r, rej) => { t = setTimeout(() => rej(new Error('timeout')), o.hostProbeMs || 8000); })]);
+        return !!(r && r.ok && r.view);
+      } catch (e) { return false; } finally { clearTimeout(t); }
+    }
     async function begin(set) {
-      if (!o.mqtt) { st = { state: 'error', err: tr('wans.noMqtt', 'Pustaka MQTT tidak termuat'), broker: set.broker }; return; }
+      const viaHost = await hostAvailable();
+      if (!viaHost && !o.mqtt) { st = { state: 'error', err: tr('wans.noMqtt', 'Pustaka MQTT tidak termuat'), broker: set.broker }; return; }
       const log = []; // jejak tahap (untuk layar Pengaturan): [jam, teks]
       const note = (m) => { log.push([Date.now(), String(m)]); if (log.length > 40) log.shift(); };
-      note('mulai: broker ' + set.broker);
-      const wan = o.createWan({ api, mqtt: o.mqtt, log: note, nativeWs: o.nativeWs });
+      note('mulai: broker ' + set.broker + (viaHost ? ' (MQTT di inti Node)' : ''));
+      const wan = viaHost ? o.createWanRemote({ api, log: note }) : o.createWan({ api, mqtt: o.mqtt, log: note, nativeWs: o.nativeWs });
       const rm = o.createRtcMux({ wan, RTCPeerConnection: o.RTCPeerConnection, iceServers: iceFromCore, mux: { window: o.MUX_WINDOW } });
       const glue = o.createRtcGlue({ rm, call: (batch) => api.rtcIn(batch), base64: !!o.base64 });
       const c = { key: set.key, wan, rm, glue, fails: new Map(), lastErr: '', log, note }; // fails: peerId -> alasan gagal terakhir (links() hanya memuat link aktif)

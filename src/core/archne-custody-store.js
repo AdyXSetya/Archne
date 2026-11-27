@@ -99,7 +99,7 @@ module.exports = {
   _writeSeg(id, c) {
     const f = segPath(this.custDir, id);
     fs.mkdirSync(path.dirname(f), { recursive: true });
-    fs.writeFileSync(f + '.tmp', JSON.stringify({ at: c.at, sz: c.sz, m: metaOf(c.m) }) + '\n' + JSON.stringify(heavyOf(c.m)));
+    fs.writeFileSync(f + '.tmp', JSON.stringify({ at: c.at, sz: c.sz, m: metaOf(c.m) }) + '\n' + JSON.stringify(heavyOf(c.m)), { mode: 0o600 });
     fs.renameSync(f + '.tmp', f);
   },
   // Setelah segmen tertulis, buang isi berat dari RAM: m jadi ringan. Isinya disimpan di cache (kemungkinan segera dikirim).

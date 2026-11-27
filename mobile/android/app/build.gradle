@@ -7,8 +7,8 @@ android {
         applicationId "com.xyraori.archne"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3200
-        versionName "0.32.0"
+        versionCode 10000
+        versionName "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // libnode.so (Node 24) ~120 MB per ABI, jadi ABI-lah yang menentukan ukuran APK. Bawaan: semua ABI yang disediakan plugin Node (arm64-v8a, armeabi-v7a, x86_64) supaya semua perangkat didukung.
         // Untuk APK lebih kecil: -Parchne.abis=arm64-v8a (pemisah + atau koma). AAB Google Play tetap mengirim hanya ABI yang cocok per perangkat.

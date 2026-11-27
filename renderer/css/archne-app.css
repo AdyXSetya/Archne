@@ -37,7 +37,7 @@ input:focus,textarea:focus{border-color:var(--acc);outline:0}
 .r1 .tm{font-size:11.5px;color:var(--dim);flex:none}
 .r2 .pv{flex:1;min-width:0;font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .avw{position:relative;flex:none}
-.dot{width:11px;height:11px;border-radius:50%;background:#7b8794;border:2px solid var(--surface);flex:none}.dot.on{background:#3ddc84}
+.dot{width:11px;height:11px;border-radius:50%;background:#7b8794;border:2px solid var(--surface);flex:none}.dot.on{background:#3ddc84}.dot.bg{background:#f5b942}
 .avw .dot{position:absolute;right:-1px;bottom:-1px}
 .sect{padding:14px 14px 4px;font-size:12px;font-weight:600;color:var(--dim)}
 .empty{padding:28px 22px;color:var(--dim);font-size:13.5px;text-align:center}

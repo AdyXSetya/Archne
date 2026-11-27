@@ -12,6 +12,8 @@ const path = require('path');
 const { createBridge } = require('./archne-rtcbridge');
 const { registerDirect } = require('./archne-ipc-direct');
 const { registerPages } = require('./archne-ipc-pages');
+const { registerWeb } = require('./archne-ipc-web');
+const SiteWarn = require('./archne-sitewarn'); // G.2: peringatan pertama kali per pemilik
 const Offer = require('./archne-fileoffer');
 const MediaCheck = require('./archne-mediacheck');
 const { ek, errText } = require('./core/archne-ecode'); // i18n (E3): galat berkunci diterjemahkan di perbatasan ini
@@ -37,7 +39,12 @@ function register(deps) {
   const log = deps.log || (() => {});
   const toRenderer = (ch, payload) => { try { deps.send && deps.send(ch, payload); } catch {} };
   const jobs = new Map(); // job -> { job, to, name, phase: 'pack' | 'error', done, total, err?, code?, ac }
-  const h = (name, fn) => ipcMain.handle(name, (_e, ...a) => { try { return fn(...a); } catch (e) { return fail(e); } });
+  const h = (name, fn) => ipcMain.handle(name, (_e, ...a) => { try { const r = fn(...a); return r && typeof r.then === 'function' ? r.catch(fail) : r; } catch (e) { return fail(e); } });
+  // Hardening v1.0 (Electron): path berkas dari renderer hanya diterima bila berasal dari dialog/seret-lepas/jepretan yang diverifikasi proses utama (src/archne-pathguard.js).
+  // Tanpa deps.pathGuard (Android, headless, tes) perilaku lama: path absolut apa pun diterima.
+  const guard = deps.pathGuard || null;
+  const pathOk = (p) => !guard || guard.has(p);
+  if (guard && typeof ipcMain.on === 'function') ipcMain.on('grantPath', (_e, p) => { guard.grant(p); }); // dikirim preload hanya untuk path dari webUtils.getPathForFile (File asli dari seret-lepas)
 
   // ---- progres (dibatasi supaya renderer tidak dibanjiri) ----
   const lastP = new Map(); // kunci -> waktu terakhir kirim
@@ -56,7 +63,7 @@ function register(deps) {
   const sendingList = () => [...jobs.values()].map((j) => ({ job: j.job, to: j.to, name: j.name, phase: j.phase, done: j.done, total: j.total, err: j.err, code: j.code }));
 
   // ---- state ----
-  h('state', () => Object.assign(core.getState(), { sending: sendingList(), downloadDir: core._downloadDir(), canDirect: !!deps.pickItems })); // canDirect: ada pemilih berkas/folder berpath (Electron); Android/headless tidak -> tombol Kirim Langsung disembunyikan
+  h('state', () => Object.assign(core.getState(), { sending: sendingList(), downloadDir: core._downloadDir(), canDirect: !!deps.pickItems, canSave: !!deps.pickSave })); // canSave: ada dialog simpan (ekspor ZIP situs); canDirect: ada pemilih berkas/folder berpath (Electron); Android/headless tidak -> tombol Kirim Langsung disembunyikan
 
   // ---- pengaturan kuota (v0.22.1, Step 2e): validasi nilai, minimum, dan penyimpanan settings.json dijaga Core (src/core/archne-settings.js) ----
   // getSettings -> { ok, items: { cust|files|pubMsgs: { value, def, min, custom } }, usage }; value = byte atau 'unlimited'.
@@ -64,6 +71,7 @@ function register(deps) {
   // v0.24.0: hasil ditambah `direct` ({ dir, def, custom }: folder Kirim Langsung) dari Core, serta canDirect/canPickDir (ada pemilih berkas/folder berpath: Electron saja).
   // 5a-3 (Halaman): getSettings().pages = { serve, def, streams: { max, peer, def:{max,peer}, min:{max,peer}, ceil:{max,peer} } } (max/peer = nilai berlaku: batas stream video per Core / per pemilik).
   // setSettings menerima juga pagesServe (true | false | null) dan pgStreamMax / pgStreamPeer (bilangan bulat | null); galat: bad | min | max (ada `min` / `max`) | io. Validasi ada di Core (satu tempat); lapisan ini dan archne-rpc.js hanya meneruskan, jadi Electron dan HTTP identik.
+  // Jumlah Worker PHP aktif (perangkat ini, semua situs): getSettings().php = { workers: bilangan bulat >= 1 | null (null = otomatis menurut RAM: 1 / 2 / 4) }; setSettings({ phpWorkers: bilangan bulat >= 1 | null }) berlaku seketika pada pool yang hidup; galat: bad | min | io. Tanpa batas atas buatan.
   // i18n (A2): getSettings().lang = 'en' | 'id'; setSettings({ lang: 'en' | 'id' | null }) (galat bad bila lain). Diteruskan apa adanya, validasi di Core.
   // Catatan HTTP: JSON tidak punya NaN / Infinity (menjadi null = kembali ke bawaan), jadi UI harus memvalidasi angka sebelum mengirim.
   // `directDir` dari renderer HANYA boleh null/'default' (kembali ke bawaan): path tujuan simpan tidak pernah datang dari renderer, hanya dari dialog proses utama (dxChooseDir).
@@ -71,7 +79,10 @@ function register(deps) {
   h('getSettings', () => settingsOut(core.getSettings()));
   h('setSettings', (patch) => {
     if (patch && typeof patch === 'object' && !Array.isArray(patch) && 'directDir' in patch && patch.directDir !== null && patch.directDir !== 'default') return { ok: false, code: 'bad', key: 'directDir', err: 'Folder tujuan hanya bisa dipilih lewat dialog' };
-    return settingsOut(core.setSettings(patch));
+    const r = core.setSettings(patch);
+    // Jumlah Worker PHP (phpWorkers): pool yang sedang hidup langsung memakai angka baru (naik = antrean dilayani, turun = Worker nganggur ditutup). Host tidak ada = pengaturan tetap tersimpan, dipakai saat host dibuat.
+    if (r && r.ok && patch && typeof patch === 'object' && 'phpWorkers' in patch) { try { const h2 = deps.getPhpHost && deps.getPhpHost(); if (h2 && typeof h2.setMaxActive === 'function') h2.setMaxActive(); } catch { /* pool gagal ganti batas: nilai tetap tersimpan */ } }
+    return settingsOut(r);
   });
 
   // ---- panggilan suara (v0.13.0): sinyal lewat Core, audio (WebRTC) di UI ----
@@ -82,7 +93,14 @@ function register(deps) {
   core.on('vcpres', (ev) => toRenderer('vcpres', ev)); // kehadiran di channel voice berubah; daftar lengkapnya ada di state().groups[].channels
   const CID = /^[0-9a-f]{16}$/;
   const cidOf = (c) => { if (typeof c !== 'string' || !CID.test(c)) throw new Error('id panggilan tidak valid'); return c; };
-  h('callStart', (peerId, sdp) => ({ ok: true, cid: core.callStart(peerId, sdp) }));
+  // Peer hadir di broker tetapi link-nya mati (HP terkunci / aplikasi di latar): bangunkan dan tunggu sampai ~25 dtk sebelum menyerah dengan petunjuk, bukan langsung gagal.
+  h('callStart', async (peerId, sdp) => {
+    if (core.peerLive && core.peerLive(core.peers.get(String(peerId))) === 'bg') {
+      const st = await core.peerWait(peerId, core.opts.bgWaitMs == null ? 25000 : core.opts.bgWaitMs);
+      if (st === 'bg') throw ek('e.call.bgHint', null, 'Dia online tetapi aplikasinya sedang di latar belakang. Minta dia membuka Archne di HP-nya, lalu coba lagi');
+    }
+    return { ok: true, cid: core.callStart(peerId, sdp) };
+  });
   h('callAnswer', (cid, sdp) => ({ ok: core.callAnswer(cidOf(cid), sdp) }));
   h('callIce', (cid, data) => ({ ok: core.callIce(cidOf(cid), data) }));
   h('callConnected', (cid) => ({ ok: core.callConnected(cidOf(cid)) }));
@@ -152,6 +170,8 @@ function register(deps) {
   h('wanEnable', (on) => ({ ok: true, settings: core.wanEnable(on === true) }));
   h('wanBroker', (url) => { if (url !== undefined && url !== null && typeof url !== 'string') throw new Error('Alamat broker tidak valid'); return { ok: true, settings: core.wanSetBroker(url || '') }; });
   h('wanRotate', () => ({ ok: true, settings: core.wanRotate() }));
+  h('mailboxSet', (out, ttlMs) => { if (out !== undefined && out !== null && typeof out !== 'boolean') throw new Error('Pengaturan tidak valid'); core.mailboxConfigure(out === null ? undefined : out, ttlMs); return { ok: true, settings: core.wanSettings() }; });
+  h('mailboxRetry', (id) => ({ ok: true, retried: typeof id === 'string' && /^[0-9a-f]{32}$/.test(id) ? core.mailboxRetry(id) : false }));
   h('inviteMake', (withTurn) => Object.assign({ ok: true }, core.inviteMake(withTurn === true)));
   h('invitePeek', (text) => { if (typeof text !== 'string') throw new Error('Undangan tidak valid'); return { ok: true, info: core.invitePeek(text) }; });
   h('inviteApply', (text) => { if (typeof text !== 'string') throw new Error('Undangan tidak valid'); return { ok: true, settings: core.inviteApply(text) }; });
@@ -218,7 +238,7 @@ function register(deps) {
   // Pilih berkas lewat dialog bawaan OS. Hasil: daftar path (kosong bila dibatalkan). Pengiriman sendiri lewat sendFile.
   ipcMain.handle('pickFiles', async () => {
     if (!deps.pickFiles) return [];
-    try { const r = await deps.pickFiles(); return Array.isArray(r) ? r.filter((x) => typeof x === 'string') : []; } catch (e) { log('pickFiles ' + e.message); return []; }
+    try { const r = await deps.pickFiles(); const l = Array.isArray(r) ? r.filter((x) => typeof x === 'string') : []; if (guard) guard.grantAll(l); return l; } catch (e) { log('pickFiles ' + e.message); return []; }
   });
 
   // job = id pekerjaan dari renderer (dipakai untuk progres dan pembatalan). Selesai setelah tawaran terkirim atau gagal.
@@ -228,6 +248,7 @@ function register(deps) {
       if (typeof job !== 'string' || !JOB.test(job)) return { ok: false, err: 'id pekerjaan tidak valid' };
       if (jobs.has(job)) return { ok: false, err: 'pekerjaan sudah ada' };
       if (typeof src !== 'string' || !path.isAbsolute(src)) return { ok: false, err: 'path berkas harus absolut' };
+      if (!pathOk(src)) return { ok: false, err: 'path berkas tidak dipilih lewat dialog', code: 'path' };
       if (typeof to !== 'string' || !to) return { ok: false, err: 'tujuan tidak valid' };
       const st = await fs.promises.stat(src).catch(() => null);
       if (!st || !st.isFile()) return { ok: false, err: 'bukan berkas biasa atau tidak ditemukan' };
@@ -275,6 +296,7 @@ function register(deps) {
   ipcMain.handle('mediaPrep', async (_e, src) => {
     try {
       if (typeof src !== 'string' || !path.isAbsolute(src)) return { ok: false, err: 'path berkas harus absolut' };
+      if (!pathOk(src)) return { ok: false, err: 'path berkas tidak dipilih lewat dialog', code: 'path' };
       if (!MediaCheck.thumbName(src)) return { ok: false, err: 'bukan jenis gambar' };
       const st = await fs.promises.stat(src).catch(() => null);
       if (!st || !st.isFile()) return { ok: false, err: 'bukan berkas biasa atau tidak ditemukan' };
@@ -308,6 +330,7 @@ function register(deps) {
       }
       const out = path.join(dir, 'cap-' + require('crypto').randomBytes(8).toString('hex') + '.' + e);
       await fs.promises.writeFile(out, buf, { mode: 0o600 });
+      if (guard) guard.grant(out); // berkas buatan proses utama sendiri: boleh dikirim lewat sendFile
       return { ok: true, path: out };
     } catch (e) { return fail(e); }
   });
@@ -359,6 +382,11 @@ function register(deps) {
     return r ? { ok: false, err: r } : { ok: true };
   });
 
+  // ---- Aplikasi: Keluar dan Reset data (Pengaturan > Umum > Aplikasi). Dikerjakan proses utama lewat deps.quit / deps.reset (main.js), yang menunda pekerjaannya sampai jawaban ini sampai ke UI.
+  // Tanpa deps (tes, headless): { ok:false, code:'na' }; UI menampilkan teksnya sendiri. Galat dari main.js memakai kode juga, tanpa teks, supaya terjemahannya tetap di UI. ----
+  h('appQuit', () => (typeof deps.quit === 'function' ? deps.quit() : { ok: false, code: 'na' }));
+  h('appReset', () => (typeof deps.reset === 'function' ? deps.reset() : { ok: false, code: 'na' }));
+
   // ---- peramban dalam aplikasi (v0.25.1): src/archne-webbrowser.js; renderer hanya mengirim alamat, validasi http(s) ada di sisi utama ----
   const web = deps.web, noWeb = () => ({ ok: false, err: T('e.web.none', null, 'Peramban dalam aplikasi tidak tersedia') }) // fungsi: bahasa dibaca saat dipanggil, bukan saat registrasi;
   h('webOpen', (url, top) => (web ? web.open(url, top) : noWeb()));
@@ -367,6 +395,25 @@ function register(deps) {
   h('webClose', () => (web ? web.close() : { ok: true }));
   ipcMain.handle('webExternal', async (_e, url) => { try { return web ? await web.external(typeof url === 'string' ? url : '') : noWeb(); } catch (e) { return fail(e); } });
 
+  // ---- penampil situs Web Lokal (0.34.0 Fase F.2): src/archne-sitebrowser.js. Renderer hanya mengirim id peer / id situs / domain (dicek ulang di sisi utama); nama pemilik dan tautan dibuat proses utama, bukan renderer atau situs ----
+  const site = deps.site, noSite = () => ({ ok: false, err: T('e.site.none', null, 'Penampil situs tidak tersedia') });
+  // Galat tak terduga dari penampil (bisa memuat jalur / pesan sistem) tidak diteruskan ke renderer: hanya galat berkunci (ek) yang dipakai apa adanya.
+  const sh = (name, fn) => h(name, (...a) => { const generic = (e) => (e && typeof e.ek === 'string' ? fail(e) : { ok: false, err: T('site.openFail', null, 'Gagal membuka situs'), code: 'site' }); try { const r = fn(...a); return r && typeof r.then === 'function' ? r.catch(generic) : r; } catch (e) { return generic(e); } });
+  sh('siteOpen', (a, top) => {
+    if (!site) return noSite();
+    if (!a || typeof a !== 'object' || Array.isArray(a)) return { ok: false, err: T('e.site.bad', null, 'Situs tidak valid'), code: 'bad' };
+    // G.2: pemilik yang belum dikonfirmasi = halaman peringatan dulu. Tidak ada kontak ke pemilik dan tidak ada penampil; yang sedang terbuka ditutup supaya tidak menutupi halaman peringatan. Situs sendiri tidak pernah diperingatkan.
+    if (typeof a.siteId === 'string' && /^[0-9a-f]{16}$/.test(a.siteId) && SiteWarn.needs(core, a.peerId)) return Promise.resolve(site.close()).then(() => ({ ok: false, code: 'warn', err: T('site.warn.title', null, 'Situs dibuat oleh orang lain') }));
+    return site.open({ peerId: a.peerId, siteId: a.siteId, domain: typeof a.domain === 'string' ? a.domain.slice(0, 100) : '', topPx: top });
+  });
+  sh('siteWarnAck', (id) => (SiteWarn.ack(core, typeof id === 'string' ? id : '') ? { ok: true } : { ok: false, code: 'bad' }));
+  sh('siteNav', (action) => (site ? site.nav(String(action)) : noSite()));
+  sh('siteRefresh', () => (site ? site.refresh() : noSite()));
+  sh('siteBounds', (top) => (site ? site.setTop(top) : noSite()));
+  sh('siteClose', () => (site ? site.close() : { ok: true }));
+  sh('siteExternal', (url) => (site ? site.confirmExternal(typeof url === 'string' ? url : '') : noSite()));
+  sh('siteExtNo', () => (site ? site.dismissExternal() : { ok: true }));
+
   // ---- pemilih layar untuk berbagi layar (v0.32.0 C.4): src/archne-screenpick.js. Renderer hanya menjawab id dari daftar yang dikirim proses utama ----
   h('screenPickDone', (rid, id, audio) => (deps.screen ? deps.screen.choose(typeof rid === 'string' ? rid.slice(0, 64) : '', typeof id === 'string' ? id.slice(0, 200) : null, audio === true) : { ok: false }));
 
@@ -374,12 +421,14 @@ function register(deps) {
   const direct = registerDirect({ ipcMain, core, deps, toRenderer, log, settingsOut });
   // ---- Halaman (1c-4a): src/archne-ipc-pages.js ----
   const pages = registerPages({ ipcMain, core, toRenderer, deps });
+  // ---- Web Lokal (0.34.0 D.6): src/archne-ipc-web.js ----
+  registerWeb({ ipcMain, core, guard, send: toRenderer, getPhpHost: deps.getPhpHost, pickSave: deps.pickSave, pickSql: deps.pickSql, metrics: deps.metrics, getCron: deps.getCron });
 
   return {
     jobs,
     direct,
     // Dipanggil saat aplikasi ditutup: hentikan semua persiapan kirim yang masih berjalan.
-    dispose() { for (const j of jobs.values()) if (j.phase === 'pack') j.ac.abort(); try { direct.dispose(); } catch {} try { pages.dispose(); } catch {} try { bridge.detach(); } catch {} try { deps.wsProxy && deps.wsProxy.dispose(); } catch {} try { deps.web && deps.web.dispose(); } catch {} try { deps.screen && deps.screen.dispose(); } catch {} },
+    dispose() { for (const j of jobs.values()) if (j.phase === 'pack') j.ac.abort(); try { if (guard && typeof ipcMain.removeAllListeners === 'function') ipcMain.removeAllListeners('grantPath'); } catch {} try { direct.dispose(); } catch {} try { pages.dispose(); } catch {} try { bridge.detach(); } catch {} try { deps.wsProxy && deps.wsProxy.dispose(); } catch {} try { deps.web && deps.web.dispose(); } catch {} try { deps.screen && deps.screen.dispose(); } catch {} },
     bridge,
   };
 }

@@ -10,7 +10,7 @@ function renderProfile() {
   const me = profId === S.me.id, p = S.peers.find((q) => q.id === profId);
   if (me && (document.activeElement === $('pbio') || document.activeElement === $('pname'))) return; // jangan menghapus ketikan yang sedang berjalan
   const nm = nameOf(profId), bio = bioOf(profId), fst = p ? (p.fst || (p.friend ? 'ok' : '')) : '';
-  const status = me ? txf('chat.you', 'Kamu') : p ? `<span class="pdot${p.online ? ' on' : ''}"></span>${p.online ? txf('peer.online', 'Online') : txf('peer.offline', 'Offline')}` : txf('profile.unseen', 'belum terlihat di jaringan');
+  const status = me ? txf('chat.you', 'Kamu') : p ? `<span class="pdot${p.online ? ' on' : p.bg ? ' bg' : ''}"></span>${p.online ? txf('peer.online', 'Online') : p.bg ? txf('peer.onlineBg', 'Online di latar') : txf('peer.offline', 'Offline')}` : txf('profile.unseen', 'belum terlihat di jaringan');
   let h = `${avHtml(profId, false)}<div class="pnm">${esc(nm)}</div><div class="psub">#${esc(profId.slice(0, 6))} · ${status}${fst === 'ok' ? ' · ' + icn('star', 'fil') + txf('badge.friend', 'Teman') : ''}</div>`;
   if (me) {
     const max = (S.limits && S.limits.maxBio) || 140, hasAv = !!(S.avatars && S.avatars[profId]);
@@ -87,7 +87,27 @@ $('pfile').onchange = async () => {
   await refresh();
 };
 let lastSeen = new Set();
-async function refresh() {
+// Satu refresh pada satu waktu. Dulu tiap kejadian 'update' (ratusan saat sync riwayat) dan setInterval 4 dtk masing-masing memulai state() + render() sendiri: di HP yang lambat
+// panggilan menumpuk tanpa batas dan semua RPC lain (Dasbor, Cron) antre di belakangnya. Sekarang panggilan yang datang saat refresh berjalan digabung jadi SATU putaran lagi;
+// janji yang dikembalikan selesai setelah putaran yang dimulai SESUDAH panggilan itu, jadi `await refresh()` tetap berarti "S sudah terbaru".
+let rfBusy = false, rfWait = [];
+function refresh() {
+  return new Promise((resolve, reject) => {
+    rfWait.push({ resolve, reject });
+    if (rfBusy) return;
+    rfBusy = true;
+    (async () => {
+      while (rfWait.length) {
+        const w = rfWait; rfWait = [];
+        let err = null;
+        try { await refreshNow(); } catch (e) { err = e || new Error('refresh'); }
+        for (const x of w) err ? x.reject(err) : x.resolve();
+      }
+      rfBusy = false;
+    })();
+  });
+}
+async function refreshNow() {
   if (typeof dxSoon === 'function') dxSoon(); // Kirim Langsung (js/archne-direct.js): satu pendaftaran onUpdate saja, supaya tes yang menangkap callback terakhir tetap memanggil refresh
   const prev = S.messages.length ? new Set(S.messages.map((m) => m.id)) : null;
   S = await window.api.state();
@@ -189,6 +209,8 @@ $('msgs').onclick = async (e) => {
     if (wasOpen) { const el = document.querySelector(`#msgs [data-mid="${CSS.escape(id)}"]`); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' }); } // setelah dilipat, pesan tetap terlihat
     return;
   }
+  const mr = e.target.closest && e.target.closest('[data-mbretry]'); // 4e: titip ulang pesan yang titipannya kedaluwarsa
+  if (mr) { try { await window.api.mailboxRetry(mr.dataset.mbretry); } catch { /* status tampil lagi di render berikutnya */ } return; }
   const gq = e.target.closest && e.target.closest('[data-goto]');
   if (gq) { gotoMsg(gq.dataset.goto); return; }
   const a = e.target.closest && e.target.closest('[data-act]');

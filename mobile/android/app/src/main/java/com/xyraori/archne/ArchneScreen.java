@@ -71,7 +71,7 @@ import java.util.List;
  * Hanya USAGE_MEDIA/GAME/UNKNOWN yang ikut: notifikasi dan nada dering tidak.
  *
  * Metode: caps(), start({audio}), answer({sdp}), ice({c,mid,ml}), stop(). Kejadian 'sig': {t:'offer',sdp} {t:'ice',c,mid,ml} {t:'ended'} {t:'audiofail'} {t:'size',w,h}.
- * KODE INI BELUM DIKOMPILASI DI LINGKUNGAN PENULIS (tanpa Android SDK): pembuktian ada di HP. Lihat docs/PLANNING-0.32.0.md, fase E.
+ * KODE INI BELUM DIKOMPILASI DI LINGKUNGAN PENULIS (tanpa Android SDK): pembuktian ada di HP.
  */
 @CapacitorPlugin(name = "ArchneScreen")
 public class ArchneScreen extends Plugin {

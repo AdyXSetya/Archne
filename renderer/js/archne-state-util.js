@@ -18,6 +18,7 @@ const IC = {
   bellOff: svg('<path d="M6 17V11a6 6 0 019-5.2M18 11v6l1.5 2H8M10 21h4M3 3l18 18"/>'),
   more: svg('<circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/>'),
   dl: svg('<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>'),
+  unzip: svg('<path d="M4 8l2-4h12l2 4v11a1 1 0 01-1 1H5a1 1 0 01-1-1z"/><path d="M4 8h16M12 11v6M9 14l3-3 3 3"/>'),
   bolt: svg('<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>'),
   trash: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
   phone: svg('<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>'),
@@ -40,6 +41,7 @@ const IC = {
   add: svg('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5M19 8v6M16 11h6"/>'),
   // Step 3 (rapikan UI): ikon kecil di gelembung, bilah balasan, dan header chat
   check: svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+  mail: svg('<rect x="3.5" y="6" width="17" height="12" rx="2"/><path d="M4.5 8l7.5 5.5L19.5 8"/>'),
   clock: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
   warn: svg('<path d="M12 4l9 16H3z"/><path d="M12 10v4M12 17.2v.1"/>'),
   smile: svg('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2"/><path d="M9 9.5v.1M15 9.5v.1"/>'),
@@ -65,6 +67,12 @@ const IC = {
   crown: svg('<path d="M3.5 8l4.5 4 4-6.5 4 6.5 4.5-4-1.8 10H5.3z"/>'),
   home: svg('<path d="M4 11l8-7 8 7"/><path d="M6 10v10h4v-6h4v6h4V10"/>'),
   edit: svg('<path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>'),
+  // Web Lokal (U1): ikon pengelola berkas
+  eye: svg('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+  rename: svg('<path d="M5 8V6h14v2M12 6v12M9 18h6"/>'),
+  film: svg('<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><path d="M10 9.5v5l4.5-2.5z"/>'),
+  music: svg('<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/>'),
+  code: svg('<path d="M9 7l-5 5 5 5M15 7l5 5-5 5"/>'),
   play: svg('<path d="M8 5l11 7-11 7z"/>'),
   hand: svg('<path d="M8 12V6.5a1.5 1.5 0 013 0V11m0-5.5a1.5 1.5 0 013 0V11m0-4a1.5 1.5 0 013 0v7a6 6 0 01-6 6h-.5a6 6 0 01-5-2.7L4 14.5a1.5 1.5 0 012.4-1.7L8 14.5"/>'),
 };
@@ -110,7 +118,7 @@ const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>
 // Tab Teman: hanya orang yang saling setuju. Permintaan masuk ("Permintaan teman") dan terkirim ("Menunggu persetujuan") punya bagian sendiri.
 // Orang lain yang punya percakapan privat (atau sedang dibuka) tampil di "Obrolan lain", supaya pesan dari yang belum jadi teman tidak hilang.
 function dmLists() {
-  const peers = [...S.peers].sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name));
+  const peers = [...S.peers].sort((a, b) => (b.online - a.online) || (!!b.bg - !!a.bg) || a.name.localeCompare(b.name));
   const keys = new Set();
   for (const m of S.messages) if (!m.sys && m.to !== 'public' && !String(m.to).startsWith('g:')) keys.add(m.from === S.me.id ? m.to : m.from);
   for (const r of S.calls || []) { if (r.group) { for (const x of r.members || []) if (callInChat(r, x.id)) keys.add(x.id); } else if (!r.hc) keys.add(r.peer); }
@@ -154,7 +162,8 @@ function dial(peer, video) {
   if (!callCtl) return;
   if (callBusy()) return toast(callBusyMsg());
   if (!peer) return toast(txf('call.peerUnseen', 'Dia belum terlihat di jaringan'));
-  if (!peer.online) return toast(txf('call.peerOffline', 'Dia sedang offline, panggilan tidak bisa tersambung'));
+  if (!peer.online && peer.bg) toast(txf('call.peerBg', 'Dia online di latar belakang. Menyambungkan, tunggu sebentar…')); // Core membangunkan dan menunggu ~25 dtk (callStart)
+  else if (!peer.online) return toast(txf('call.peerOffline', 'Dia sedang offline, panggilan tidak bisa tersambung'));
   if (!peer.secure) return toast(txf('call.needEnc', 'Panggilan butuh enkripsi, tapi versi Archne dia terlalu lama'));
   callCtl.start(peer.id, peer.name, video ? { video: true } : undefined);
 }
@@ -171,7 +180,7 @@ function fold(text) {
 // Pratinjau satu baris (daftar chat, kutipan balasan): tautan panjang jadi "domain/jalur…".
 const lnkShort = (t) => (typeof Linkify === 'undefined' ? String(t == null ? '' : t) : Linkify.short(t));
 // Teks pesan -> HTML: di-escape, tautan web jadi chip ringkas (renderer/archne-linkify.js). Teks asli di m.text tidak berubah.
-const linkHtml = (t) => (typeof Linkify === 'undefined' ? esc(t) : Linkify.html(t, { esc, icon: IC.link.replace('<svg ', '<svg class="ic" '), copy: IC.copy }));
+const linkHtml = (t) => (typeof Linkify === 'undefined' ? esc(t) : Linkify.html(t, { esc, icon: IC.link.replace('<svg ', '<svg class="ic" '), copy: IC.copy, nameOf }));
 function bodyHtml(m) {
   if (m.file) return null;
   if (typeof inviteBody === 'function') { const iv = inviteBody(m); if (iv !== null) return iv; } // tautan archne://join jadi kartu (js/archne-wan.js)

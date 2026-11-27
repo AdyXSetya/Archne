@@ -37,7 +37,15 @@ function allowDisplay(permission, info, rendererDir) {
   return true;
 }
 
-// Gabungan untuk setPermissionRequestHandler / setPermissionCheckHandler di main.js
-const allowPermission = (permission, info, rendererDir) => allowMedia(permission, info, rendererDir) || allowDisplay(permission, info, rendererDir);
+// Salin ke papan klip: 'clipboard-sanitized-write' hanya untuk halaman Archne sendiri. Hanya menulis teks/gambar tersanitasi (tidak bisa membaca papan klip), dan hanya lewat gestur pengguna.
+// Tanpa ini navigator.clipboard.writeText selalu ditolak di Electron, sehingga tombol Salin tidak pernah bekerja.
+function allowClipboard(permission, info, rendererDir) {
+  if (permission !== 'clipboard-sanitized-write') return false;
+  info = info || {};
+  return isAppUrl(info.url, rendererDir) || (!info.url && isAppOrigin(info.origin));
+}
 
-module.exports = { allowMedia, allowDisplay, allowPermission, isAppUrl };
+// Gabungan untuk setPermissionRequestHandler / setPermissionCheckHandler di main.js
+const allowPermission = (permission, info, rendererDir) => allowMedia(permission, info, rendererDir) || allowDisplay(permission, info, rendererDir) || allowClipboard(permission, info, rendererDir);
+
+module.exports = { allowMedia, allowDisplay, allowClipboard, allowPermission, isAppUrl };

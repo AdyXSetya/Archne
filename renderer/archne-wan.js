@@ -7,8 +7,10 @@
 //   start({ broker, name }) -> Promise  // sambung ke broker; menyiarkan presence "online" (retained) dan memasang Last Will "offline"
 //   stop() -> Promise                    // siarkan "offline" lalu putus
 //   sendSignal(to, body) -> Promise<bool>
+//   publishRaw(topic, payload, { retain }) -> Promise<bool>  // 4d: publish bungkus kotak surat yang sudah disegel Core (atau '' untuk mengosongkan titipan retained). Hanya topik kotak surat; true = broker menerima (QoS 1)
 //   peers() -> [{ id, name, ts }] yang sedang online; isOfferer(peerId) -> bool (ID lebih kecil membuat offer; menghindari glare)
-//   on('status' | 'peers' | 'signal', cb)  // status: { state: 'connecting'|'online'|'offline'|'error', err? }; signal: { from, ts, body }
+//   on('status' | 'peers' | 'signal' | 'mailbox', cb)  // status: { state: 'connecting'|'online'|'offline'|'error', err? }; signal: { from, ts, body }
+//     mailbox (4c-3, hanya bila api.mailboxIn ada): hasil Core.mailboxIngest + topic: { action: 'stored'|'clear'|'retry'|'ignore', topic, mid?, why? }; deleted (4c-4): true/false bila titipan 'stored'/'clear' sudah dicoba dihapus dari broker
 // }
 (function (root, factory) {
   const m = factory();
@@ -46,7 +48,7 @@
     const rand = opts.rand || defaultRand;
     const dbg = (m) => { try { if (opts.log) opts.log(m); } catch (e) { /* log tidak boleh merusak klien */ } };
     const T = opts.timers || { setInterval: (f, ms) => setInterval(f, ms), clearInterval: (h) => clearInterval(h) };
-    const L = { status: [], peers: [], signal: [] };
+    const L = { status: [], peers: [], signal: [], mailbox: [] };
     const emit = (k, v) => L[k].forEach((cb) => { try { cb(v); } catch (e) { /* pendengar tidak boleh merusak klien */ } });
     const peerMap = new Map(); // id -> { id, name, sid, ts, online }
     let client = null, topics = null, myId = null, sid = null, name = '', hb = null, sweep = null, queue = Promise.resolve(), gen = 0, lastOnline = null, healT = null;
@@ -69,6 +71,27 @@
         cur.online = false;
       }
       changed();
+    }
+
+    // Langkah 4c-3: kotak suratku. Hanya aktif bila Core memberi topics.mailbox DAN api.mailboxIn ada (host Node); di jalur UI/IPC tidak berlangganan.
+    // Isi tidak dibuka di sini: string opak diteruskan ke Core (mailboxIn -> mailboxIngest). Hasilnya dipancarkan apa adanya lewat 'mailbox' (4c-4 memakainya untuk menghapus dari broker).
+    const mboxOn = () => !!(topics && typeof topics.mailbox === 'string' && typeof api.mailboxIn === 'function');
+    const isMbox = (topic) => mboxOn() && typeof topic === 'string' && topic.startsWith(topics.mailbox.slice(0, -1)) && topic.length <= 200;
+    // 4c-4: hapus titipan dari broker = publish payload kosong ke topik retained itu. Hanya setelah Core menjawab 'stored' atau 'clear' (pesan sudah tersimpan atau memang tak perlu disimpan);
+    // 'retry' dan 'ignore' dibiarkan. Gagal menghapus tidak berbahaya: titipan terbaca 'dup' di sambungan berikutnya lalu dihapus lagi.
+    const delRetained = (c, topic) => new Promise((res) => {
+      let done = false; const fin = (v) => { if (!done) { done = true; res(v); } };
+      const t = setTimeout(() => fin(false), 5000);
+      try { c.publish(topic, '', { qos: 1, retain: true }, (e) => { clearTimeout(t); fin(!e); }); } catch { clearTimeout(t); fin(false); }
+    });
+    async function handleMailbox(topic, payload) {
+      const c = client;
+      let r;
+      try { const s = decode(payload); if (s.length > 70000) return; r = await api.mailboxIn(topic, s); } catch (e) { dbg('mailboxIn gagal: ' + (e && e.message)); return; }
+      if (!r || typeof r !== 'object' || typeof r.action !== 'string') return;
+      const out = Object.assign({}, r, { topic });
+      if ((r.action === 'stored' || r.action === 'clear') && c && c === client) out.deleted = await delRetained(c, topic);
+      emit('mailbox', out);
     }
 
     async function handle(topic, payload) {
@@ -146,6 +169,7 @@
         c.on('disconnect', (p) => dbg('mqtt: disconnect dari broker ' + JSON.stringify(p || {})));
         c.on('message', (topic, payload) => {
           if (c !== client) return;
+          if (isMbox(topic)) { queue = queue.then(() => handleMailbox(topic, payload)); return; }
           if (topic === topics.mine) { if (decode(payload) !== lastOnline) heal(c); return; } // presence-ku sendiri: tidak perlu dibuka
           queue = queue.then(() => handle(topic, payload));
         });
@@ -153,7 +177,7 @@
           if (c !== client) return;
           everUp = true; up = true; clearTimeout(wd);
           dbg('broker menerima sambungan' + (native ? ' (jalur Node)' : '') + '; subscribe');
-          c.subscribe([topics.presence, topics.inbox], { qos: 1 }, (e) => {
+          c.subscribe(mboxOn() ? [topics.presence, topics.inbox, topics.mailbox] : [topics.presence, topics.inbox], { qos: 1 }, (e) => {
             dbg(e ? 'subscribe gagal' : 'subscribe OK; menerbitkan presence');
             if (e) return emit('status', { state: 'error', err: 'subscribe: ' + (e.message || e) });
             publishPresence('online', true).then(() => emit('status', { state: 'online' }), (e2) => emit('status', { state: 'error', err: String(e2 && e2.message || e2) }));
@@ -196,8 +220,21 @@
       return new Promise((res) => client.publish(s.topic, s.payload, { qos: 1, retain: false }, (e) => res(!e)));
     }
 
+    // 4d: publish apa adanya (string opak dari Core). Hanya topik titipan archne/v1/<net>/m/<penerima>/<mid>; sambungan yang sedang putus langsung gagal
+    // (tanpa diantre mqtt.js), supaya Core menjadwalkan percobaan ulang dengan id baru dan bukan menumpuk publish tertunda.
+    const MBOX_TOPIC = /^archne\/v1\/[0-9a-f]{16}\/m\/[0-9a-f]{16}\/[0-9a-f]{16}$/;
+    function publishRaw(topic, payload, o) {
+      const c = client;
+      if (!c || c.connected === false || typeof topic !== 'string' || !MBOX_TOPIC.test(topic) || typeof payload !== 'string' || payload.length > 70000) return Promise.resolve(false);
+      return new Promise((res) => {
+        let done = false; const fin = (v) => { if (!done) { done = true; res(v); } };
+        const t = setTimeout(() => fin(false), 8000);
+        try { c.publish(topic, payload, { qos: 1, retain: !!(o && o.retain) }, (e) => { clearTimeout(t); fin(!e); }); } catch { clearTimeout(t); fin(false); }
+      });
+    }
+
     return {
-      start, stop, sendSignal, peers: list,
+      start, stop, sendSignal, publishRaw, peers: list,
       isOfferer: (peerId) => !!myId && String(myId) < String(peerId),
       on: (k, cb) => { if (L[k]) L[k].push(cb); },
     };

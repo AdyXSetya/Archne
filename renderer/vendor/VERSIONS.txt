@@ -1,5 +1,5 @@
 Berkas pihak ketiga di folder ini (disalin apa adanya dari paket resmi; JANGAN diedit manual).
-Format baris data:  <sha256>  <berkas>  <= <asal>.   Dicek oleh test/vendorintegrity.js.
+Format baris data:  <sha256>  <berkas>  <= <asal>. 
 Diperbarui terakhir: 22 Nov 2026 (rencana 4.2).
 
 75873d04a6400bbbac093b3602caf06f44ed92ee032925e1f4f21c03eba05a4e  mqtt.min.js  <= npm mqtt@5.16.1, dist/mqtt.min.js
@@ -16,4 +16,4 @@ Lisensi:
                                     disebut README paket web-noise-suppressor.
 
 Cara memperbarui: npm pack <paket>@<versi> (pilih rilis yang sudah >= 2 minggu), salin berkas dari tabel di atas, perbarui hash
-di sini, lalu jalankan node test/vendorintegrity.js dan node test/mqttvendor.js. Setelah mengganti RNNoise, dengarkan kualitas panggilan.
+di sini, lalu pastikan aplikasi tetap berjalan. Setelah mengganti RNNoise, dengarkan kualitas panggilan.

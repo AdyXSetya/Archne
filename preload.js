@@ -68,6 +68,8 @@ contextBridge.exposeInMainWorld('api', {
   wanEnable: (on) => ipcRenderer.invoke('wanEnable', on),
   wanBroker: (url) => ipcRenderer.invoke('wanBroker', url),
   wanRotate: () => ipcRenderer.invoke('wanRotate'),
+  mailboxSet: (out, ttlMs) => ipcRenderer.invoke('mailboxSet', out, ttlMs),
+  mailboxRetry: (id) => ipcRenderer.invoke('mailboxRetry', id),
   inviteMake: (withTurn) => ipcRenderer.invoke('inviteMake', withTurn),
   invitePeek: (text) => ipcRenderer.invoke('invitePeek', text),
   inviteApply: (text) => ipcRenderer.invoke('inviteApply', text),
@@ -92,7 +94,7 @@ contextBridge.exposeInMainWorld('api', {
   rtcStatus: () => ipcRenderer.invoke('rtcStatus'),
   // berkas: kirim
   pickFiles: () => ipcRenderer.invoke('pickFiles'),
-  pathOf: (file) => { try { return webUtils.getPathForFile(file) || ''; } catch { return ''; } }, // untuk seret-lepas (File.path sudah tidak ada di Electron modern)
+  pathOf: (file) => { try { const p = webUtils.getPathForFile(file) || ''; if (p) ipcRenderer.send('grantPath', p); return p; } catch { return ''; } }, // grantPath: proses utama hanya menerima path dari File asli (hardening v1.0, src/archne-pathguard.js) // untuk seret-lepas (File.path sudah tidak ada di Electron modern)
   sendFile: (job, src, to, media) => ipcRenderer.invoke('sendFile', job, src, to, media),
   mediaPrep: (src) => ipcRenderer.invoke('mediaPrep', src),
   mediaRead: (id) => ipcRenderer.invoke('mediaRead', id),
@@ -109,6 +111,8 @@ contextBridge.exposeInMainWorld('api', {
   showFile: (id) => ipcRenderer.invoke('showFile', id),
   openFile: (id) => ipcRenderer.invoke('openFile', id),
   openDownloads: () => ipcRenderer.invoke('openDownloads'),
+  appQuit: () => ipcRenderer.invoke('appQuit'), // Pengaturan > Aplikasi: tutup aplikasi sepenuhnya
+  appReset: () => ipcRenderer.invoke('appReset'), // Pengaturan > Aplikasi: hapus semua data lalu mulai ulang sebagai akun baru
   // peramban dalam aplikasi (v0.25.1)
   webOpen: (url, top) => ipcRenderer.invoke('webOpen', url, top),
   webNav: (action) => ipcRenderer.invoke('webNav', action),
@@ -116,6 +120,17 @@ contextBridge.exposeInMainWorld('api', {
   webClose: () => ipcRenderer.invoke('webClose'),
   webExternal: (url) => ipcRenderer.invoke('webExternal', url),
   onWebState: (cb) => ipcRenderer.on('webstate', (_e, st) => cb(st)),
+  // Penampil situs Web Lokal (0.34.0 Fase F.2). siteOpen({ peerId, siteId, domain }, tinggiBilah); nama pemilik dan tautan dibuat proses utama.
+  siteOpen: (a, top) => ipcRenderer.invoke('siteOpen', a, top),
+  siteNav: (action) => ipcRenderer.invoke('siteNav', action),
+  siteRefresh: () => ipcRenderer.invoke('siteRefresh'),
+  siteBounds: (top) => ipcRenderer.invoke('siteBounds', top),
+  siteClose: () => ipcRenderer.invoke('siteClose'),
+  siteExternal: (url) => ipcRenderer.invoke('siteExternal', url),
+  siteExtNo: () => ipcRenderer.invoke('siteExtNo'),
+  siteWarnAck: (id) => ipcRenderer.invoke('siteWarnAck', id), // G.2: konfirmasi peringatan pertama kali untuk satu pemilik
+  onSiteState: (cb) => ipcRenderer.on('sitestate', (_e, st) => cb(st)),
+  onSiteExt: (cb) => ipcRenderer.on('siteext', (_e, x) => cb(x)),
   // berbagi layar (v0.32.0 C.4): proses utama mengirim daftar layar/jendela, renderer menjawab dengan id pilihan (null = batal)
   onScreenPick: (cb) => ipcRenderer.on('screenpick', (_e, p) => cb(p)),
   screenPickDone: (rid, id, audio) => ipcRenderer.invoke('screenPickDone', rid, id, audio === true),
@@ -154,6 +169,65 @@ contextBridge.exposeInMainWorld('api', {
   pgSetDl: (id, allow) => ipcRenderer.invoke('pgSetDl', id, allow),
   pgRemove: (id) => ipcRenderer.invoke('pgRemove', id),
   pgNewList: () => ipcRenderer.invoke('pgNewList'),
+  webAvail: (peerId) => ipcRenderer.invoke('webAvail', peerId),
+  webList: (peerId, o) => ipcRenderer.invoke('webList', peerId, o),
+  webDbList: (id) => ipcRenderer.invoke('webDbList', id),
+  webDbTables: (id, name, o) => ipcRenderer.invoke('webDbTables', id, name, o),
+  webDbRows: (id, name, o) => ipcRenderer.invoke('webDbRows', id, name, o),
+  webDbInsert: (id, name, o) => ipcRenderer.invoke('webDbInsert', id, name, o),
+  webDbUpdate: (id, name, o) => ipcRenderer.invoke('webDbUpdate', id, name, o),
+  webDbDelete: (id, name, o) => ipcRenderer.invoke('webDbDelete', id, name, o),
+  webDbExport: (id, name) => ipcRenderer.invoke('webDbExport', id, name),
+  webDbImport: (id, o) => ipcRenderer.invoke('webDbImport', id, o),
+  webDbCreate: (id, o) => ipcRenderer.invoke('webDbCreate', id, o),
+  webDbDrop: (id, name) => ipcRenderer.invoke('webDbDrop', id, name),
+  webDbReset: (id, name) => ipcRenderer.invoke('webDbReset', id, name),
+  webDbExec: (id, name, o) => ipcRenderer.invoke('webDbExec', id, name, o),
+  webDbCsv: (id, name, o) => ipcRenderer.invoke('webDbCsv', id, name, o),
+  webDbMysqlChoose: (id) => ipcRenderer.invoke('webDbMysqlChoose', id),
+  webDbMysqlCommit: (id, token) => ipcRenderer.invoke('webDbMysqlCommit', id, token),
+  webDbMysqlCancel: (id, token) => ipcRenderer.invoke('webDbMysqlCancel', id, token),
+  webDbMysqlExport: (id) => ipcRenderer.invoke('webDbMysqlExport', id), // dialog simpan di proses utama; jalur tujuan tidak pernah sampai ke renderer; kemajuan lewat onWebDbProg
+  webDbMysqlExportCancel: (id) => ipcRenderer.invoke('webDbMysqlExportCancel', id),
+  webDbMysqlCreate: (id) => ipcRenderer.invoke('webDbMysqlCreate', id), // buat mysql.sqlite kosong + port tetap; tidak menyalakan server
+  webDbMysqlStart: (id) => ipcRenderer.invoke('webDbMysqlStart', id), // nyalakan + pin server MySQL (fase 6d)
+  webDbMysqlStop: (id) => ipcRenderer.invoke('webDbMysqlStop', id), // matikan (juga yang di-pin)
+  webFiles: (id, dir) => ipcRenderer.invoke('webFiles', id, dir),
+  webFileRead: (id, rel) => ipcRenderer.invoke('webFileRead', id, rel),
+  webFileView: (id, rel) => ipcRenderer.invoke('webFileView', id, rel),
+  webFileWrite: (id, rel, text, o) => ipcRenderer.invoke('webFileWrite', id, rel, text, o),
+  webMkdir: (id, rel) => ipcRenderer.invoke('webMkdir', id, rel),
+  webRename: (id, rel, name) => ipcRenderer.invoke('webRename', id, rel, name),
+  webMove: (id, rels, dest) => ipcRenderer.invoke('webMove', id, rels, dest),
+  webDelete: (id, rels) => ipcRenderer.invoke('webDelete', id, rels),
+  webUpload: (id, dir, paths, o) => ipcRenderer.invoke('webUpload', id, dir, paths, o), // paths: hasil dxPick / pathOf (sudah disetujui proses utama lewat pathGuard)
+  webZipList: (id, rel, o) => ipcRenderer.invoke('webZipList', id, rel, o), // 0.34.0 U2: periksa .zip di dalam situs (tanpa menulis)
+  webZipExtract: (id, rel, o) => ipcRenderer.invoke('webZipExtract', id, rel, o), // ekstrak ke folder tempat .zip berada; kemajuan lewat onWebProg
+  webZipExport: (id, rels) => ipcRenderer.invoke('webZipExport', id, rels), // dialog simpan di proses utama; jalur tujuan tidak pernah sampai ke renderer
+  webAssetScan: (id) => ipcRenderer.invoke('webAssetScan', id), // 0.34.0 O1: pindai aset eksternal situs (baca saja, tanpa jaringan)
+  webOfflineStart: (id, o) => ipcRenderer.invoke('webOfflineStart', id, o), // 0.34.0 O2e: unduh aset terpilih ke staging (menunggu selesai; kemajuan lewat onWebOff). Tanpa jalur disk di hasil
+  webOfflineCancel: () => ipcRenderer.invoke('webOfflineCancel'),
+  webOfflineStatus: () => ipcRenderer.invoke('webOfflineStatus'),
+  webOfflineDiscard: () => ipcRenderer.invoke('webOfflineDiscard'),
+  webOfflineApply: (id) => ipcRenderer.invoke('webOfflineApply', id), // 0.34.0 O3: salin aset ke assets/vendor + tulis ulang referensi (berkas asli dicadangkan)
+  webOfflineUndoInfo: (id) => ipcRenderer.invoke('webOfflineUndoInfo', id),
+  webOfflineUndo: (id) => ipcRenderer.invoke('webOfflineUndo', id), // kembalikan penerapan terakhir (berkas yang sudah diubah pemilik dibiarkan)
+  webDash: (o) => ipcRenderer.invoke('webDash', o), // 0.34.0 U3: metrik Dasbor (hanya perangkat ini; tanpa jalur disk)
+  webDashPhp: (id) => ipcRenderer.invoke('webDashPhp', id), // info PHP yang disaring (versi, ekstensi, batas)
+  webCronList: (site) => ipcRenderer.invoke('webCronList', site), // 0.34.0 Cronjob C6 (hanya pemilik): daftar + jadwal berikut + hasil terakhir
+  webCronAdd: (o) => ipcRenderer.invoke('webCronAdd', o),
+  webCronUpdate: (id, o) => ipcRenderer.invoke('webCronUpdate', id, o),
+  webCronRemove: (id) => ipcRenderer.invoke('webCronRemove', id),
+  webCronRun: (id) => ipcRenderer.invoke('webCronRun', id), // jalankan sekarang; hasil lewat onWebCron dan log
+  webCronLog: (o) => ipcRenderer.invoke('webCronLog', o),
+  webCronLogClear: (job) => ipcRenderer.invoke('webCronLogClear', job),
+  webCronCheck: (expr) => ipcRenderer.invoke('webCronCheck', expr), // cek ekspresi + 5 jadwal berikut (tanpa tulis)
+  webMine: () => ipcRenderer.invoke('webMine'),
+  webCreate: (o) => ipcRenderer.invoke('webCreate', o),
+  webUpdate: (id, o) => ipcRenderer.invoke('webUpdate', id, o),
+  webRemove: (id) => ipcRenderer.invoke('webRemove', id),
+  webCheckDomain: (domain, id) => ipcRenderer.invoke('webCheckDomain', domain, id),
+  webPreview: (id) => ipcRenderer.invoke('webPreview', id),
   pgArcExport: (o) => ipcRenderer.invoke('pgArcExport', o),
   pgArcOpen: () => ipcRenderer.invoke('pgArcOpen'),
   pgArcImport: (token, o) => ipcRenderer.invoke('pgArcImport', token, o),
@@ -166,6 +240,11 @@ contextBridge.exposeInMainWorld('api', {
   onPgDl: (cb) => ipcRenderer.on('pgdl', (_e, p) => cb(p)),
   onDxProg: (cb) => ipcRenderer.on('dxprog', (_e, p) => cb(p)),
   onDxScan: (cb) => ipcRenderer.on('dxscan', (_e, p) => cb(p)),
+  onWebProg: (cb) => ipcRenderer.on('webprog', (_e, p) => cb(p)), // kemajuan unggahan ke situs (Fase E.3)
+  onWebDbProg: (cb) => ipcRenderer.on('webdbprog', (_e, p) => cb(p)), // kemajuan ekspor dump MySQL: { id, tables, rows, bytes }
+  onWebZip: (cb) => ipcRenderer.on('webzip', (_e, p) => cb(p)), // ekspor ZIP selesai / gagal (U2)
+  onWebCron: (cb) => ipcRenderer.on('webcron', (_e, p) => cb(p)), // satu eksekusi cron selesai (C6): { id, site, reason, ok, code?, status?, endedAt }
+  onWebOff: (cb) => ipcRenderer.on('weboff', (_e, p) => cb(p)), // kemajuan unduhan aset Jadikan offline (O2e)
   // event
   onRemoved: (cb) => ipcRenderer.on('removed', (_e, r) => cb(r)),
   onUpdate: (cb) => ipcRenderer.on('update', () => cb()),

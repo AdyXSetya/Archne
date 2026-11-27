@@ -28,11 +28,9 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
   function nat(n, m, a) { var p = plug(n); if (!p || typeof p[m] !== 'function') return Promise.reject('noplugin'); try { return Promise.resolve(p[m](a || {})); } catch (x) { return Promise.reject(x); } }
   function emsg(er) { return er && er.message != null ? String(er.message) : String(er == null ? '' : er); }
   var noop = function () {};
-  // Screen-share spike (0.32.0 plan, A.3): log to logcat whether this WebView has getDisplayMedia. View with: adb logcat | findstr ARCHNE-PROBE
-  try { var md = navigator.mediaDevices; console.log('ARCHNE-PROBE getDisplayMedia=' + (md && typeof md.getDisplayMedia === 'function' ? 'yes' : 'no') + ' ua=' + navigator.userAgent); } catch (x) { console.log('ARCHNE-PROBE error: ' + x); }
   // Bahasa halaman pembungkus (di luar iframe; i18n renderer tidak sampai ke sini). Sumber: bahasa aplikasi di Core, dikirim inti Node lewat 'ready'
   // (info.lang) dan lewat pesan 'lang' dari UI saat pengguna menggantinya. Disimpan di localStorage 'lc.lang' agar teks sebelum inti siap (Memulai..., galat)
-  // memakai bahasa terakhir. Bawaan en. Kunci en dan id HARUS sama (dijaga test/i18n.js).
+  // memakai bahasa terakhir. Bawaan en. Kunci en dan id HARUS sama.
   var W = {
     en: {
       start: 'Starting Archne...',
@@ -44,6 +42,7 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
       battOk: 'Already excluded from battery optimization.', battAsk: 'Choose Allow so Archne keeps running while the screen is off.',
       battManual: 'Could not open the battery settings. Set it manually: Settings > Apps > Archne > Battery > Unrestricted.', battFail: 'Could not open the battery settings.',
       noApp: 'No app can open this file',
+      quitFail: 'Could not close the app', resetFail: 'Could not reset the data',
       e_permDenied: 'Storage permission was denied', e_badArgs: 'Invalid arguments', e_tmpDir: 'Could not create the temporary folder', e_readPick: 'Could not read the selected file',
       e_storageFull: 'Phone storage is full', e_srcGone: 'The source file no longer exists', e_mediaDenied: 'Android refused to create the file', e_writeDl: 'Could not write to Download',
       e_dlDir: 'Could not create the Download folder', e_tooMany: 'Too many files with the same name'
@@ -58,6 +57,7 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
       battOk: 'Sudah dikecualikan dari penghematan baterai.', battAsk: 'Pilih Izinkan agar Archne tetap aktif saat layar mati.',
       battManual: 'Tidak bisa membuka pengaturan baterai. Atur manual: Pengaturan > Aplikasi > Archne > Baterai > Tanpa batasan.', battFail: 'Tidak bisa membuka pengaturan baterai.',
       noApp: 'Tidak ada aplikasi untuk membuka berkas ini',
+      quitFail: 'Gagal menutup aplikasi', resetFail: 'Gagal mereset data',
       e_permDenied: 'izin penyimpanan ditolak', e_badArgs: 'argumen tidak sah', e_tmpDir: 'folder sementara tidak bisa dibuat', e_readPick: 'tidak bisa membaca berkas pilihan',
       e_storageFull: 'Penyimpanan HP penuh', e_srcGone: 'berkas sumber tidak ada', e_mediaDenied: 'MediaStore menolak membuat berkas', e_writeDl: 'tidak bisa menulis ke Download',
       e_dlDir: 'folder Download tidak bisa dibuat', e_tooMany: 'terlalu banyak berkas bernama sama'
@@ -152,6 +152,7 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
       if (n === 'archne:ready') onReady(a[0]);
       else if (n === 'archne:saved') onSaved(a[0]);
       else if (n === 'archne:arcpick') arcPick();
+      else if (n === 'archne:stopped') { if (stopFin) stopFin(); }
       else if (n === 'archne:fatal') show(T('fatal', { m: a[0] }));
     }); }).catch(function (er) { show(T('nodeFail', { e: emsg(er) })); });
     // Node dimulai manual (startMode manual), sekali per proses. Buka ulang selagi layanan latar depan masih hidup: inti Node sudah jalan dan plugin
@@ -269,6 +270,22 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
     if (!/^https?:\/\/[^\s]+$/i.test(u) || u.length > 2048) return;
     nat('Browser', 'open', { url: u }).catch(function () { try { window.open(u, '_system'); } catch (y) {} });
   }
+  // Keluar / Reset data (Pengaturan > Aplikasi). Inti Node dihentikan rapi dulu ('archne:quit' -> 'archne:stopped', paling lama 4 dtk), baru plugin native
+  // mematikan proses (quit) atau menghapus data aplikasi lalu mematikannya (reset). Lihat ArchneExit.java.
+  var stopFin = null;
+  function stopNode(then) {
+    if (stopFin) return;
+    var done = false;
+    stopFin = function () { if (done) return; done = true; stopFin = null; then(); };
+    setTimeout(function () { if (stopFin) stopFin(); }, 4000);
+    pr(function () { return plug('Nodejs').send({ eventName: 'archne:quit', args: ['bye'] }); }).catch(function () { if (stopFin) stopFin(); });
+  }
+  function appExit(kind) {
+    stopNode(function () {
+      var fail = function () { tell({ archne: 'native-error', err: T(kind === 'reset' ? 'resetFail' : 'quitFail') }); };
+      if (kind === 'reset') nat('ArchneBackground', 'reset').catch(fail); else nat('ArchneBackground', 'quit').catch(fail);
+    });
+  }
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!origin || e.origin !== origin || e.source !== frame.contentWindow) return;
@@ -280,7 +297,9 @@ html,body{margin:0;height:100%;background:#0e141b;color:#e6e9ee;font:15px/1.5 sy
     if (d && d.archne === 'answer-done') { stopAnswer(); return; }
     if (d && d.archne === 'native' && d.action === 'back-result') { backResult(d); return; }
     if (d && d.archne === 'native' && d.action === 'weburl') { openWeb(d); return; }
+    if (d && d.archne === 'native' && (d.action === 'quit' || d.action === 'reset')) { appExit(d.action); return; } // Pengaturan > Aplikasi
     if (d && d.archne === 'native' && d.action === 'viewer') { nat('ArchneBackground', 'viewer', { on: d.on === true }).catch(noop); return; } // mode tonton layar penuh (landscape + bilah tersembunyi)
+    if (d && d.archne === 'native' && d.action === 'wankeep') { nat('ArchneBackground', 'keepAlive', { on: d.on === true }).catch(noop); return; } // lintas jaringan menyala: jaga WebView tetap berjalan di latar
     if (d && d.archne === 'native' && d.action === 'pip') { nat('ArchneBackground', 'pip', { on: d.on === true }).catch(noop); return; } // siaga Picture-in-Picture (panggilan video aktif)
     if (d && d.archne === 'native' && d.action === 'dxpick') { dxPick(d); return; }
     if (d && d.archne === 'native' && typeof d.action === 'string' && d.action.indexOf('screen-') === 0) { screenAsk(d); return; }

@@ -23,7 +23,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * takeAnswer() -> {cid}: id panggilan dari tombol "Jawab" di notifikasi panggilan masuk ('' bila tidak ada); UI lalu menjawabnya.
  * viewer({on}): mode tonton layar penuh untuk layar yang dibagikan lawan bicara. on=true: landscape dua arah (kiri/kanan mengikuti sensor) + bilah sistem tersembunyi; on=false: pulihkan orientasi dan bilah. Aman dipanggil berulang.
  * pip({on}): panggilan video aktif (on=true) / tidak (on=false). Selagi aktif, tombol Home membuat aplikasi masuk jendela Picture-in-Picture (kamera tetap hidup). on=false saat PiP tampil menutup jendelanya.
+ * keepAlive({on}): lintas jaringan (MQTT + WebRTC di WebView) menyala/mati. on=true: WebView tidak dijeda saat aplikasi ke latar belakang. Lihat MainActivity.keepWebView().
  * pipState() -> {on}: apakah aplikasi sedang dalam mode PiP. Kejadian 'pip' {on} dikirim tiap mode berubah.
+ * quit(): tutup aplikasi sepenuhnya (layanan latar berhenti, tugas dihapus, proses dimatikan). Cangkang memanggilnya setelah inti Node berhenti rapi. Lihat ArchneExit.
+ * reset(): hapus semua data aplikasi (setara "Hapus penyimpanan") lalu matikan proses; data baru dibuat saat dibuka lagi. Lihat ArchneExit.
  * batteryAsk({manual}) -> {value}: minta Android mengecualikan aplikasi dari penghematan baterai (dialog sistem). Tanpa manual hanya sekali seumur pemasangan.
  *   value: "ok" (sudah dikecualikan), "asked" (dialog dibuka), "skipped" (sudah pernah ditanya), "failed".
  */
@@ -35,6 +38,7 @@ public class ArchneBackground extends Plugin {
   static volatile String pendingChat = "";
   static volatile String pendingAnswer = "";
   static volatile boolean pipWanted = false;
+  static volatile boolean keepAlive = false; // lintas jaringan aktif: WebView harus tetap berjalan di latar belakang
   static volatile String dxout = ""; // folder salinan sementara Kirim Langsung; disimpan agar UI yang dibuka ulang bisa memakai inti Node yang masih hidup
   private static ArchneBackground inst;
 
@@ -131,10 +135,33 @@ public class ArchneBackground extends Plugin {
   }
 
   @PluginMethod
+  public void keepAlive(PluginCall call) {
+    keepAlive = Boolean.TRUE.equals(call.getBoolean("on", false));
+    getActivity().runOnUiThread(new Runnable() {
+      @Override public void run() {
+        if (getActivity() instanceof MainActivity) ((MainActivity) getActivity()).keepWebView();
+      }
+    });
+    call.resolve();
+  }
+
+  @PluginMethod
   public void pipState(PluginCall call) {
     JSObject r = new JSObject();
     r.put("on", getActivity() instanceof MainActivity && ((MainActivity) getActivity()).pipActive());
     call.resolve(r);
+  }
+
+  @PluginMethod
+  public void quit(PluginCall call) {
+    call.resolve();
+    ArchneExit.quit(getActivity());
+  }
+
+  @PluginMethod
+  public void reset(PluginCall call) {
+    call.resolve();
+    ArchneExit.reset(getActivity());
   }
 
   @PluginMethod

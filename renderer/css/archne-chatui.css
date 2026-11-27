@@ -66,6 +66,7 @@
 .st{display:inline-flex;align-items:center;gap:2px;vertical-align:-2px;font-weight:600}
 .st svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
 .st.ok{color:var(--acc)}
+.st.err{color:#e5484d}.st[data-mbretry]{cursor:pointer}
 .m.me .st:not(.ok){color:inherit;opacity:.8}
 .t{display:flex;align-items:center;justify-content:flex-end;gap:2px}
 .t .mmore{display:inline-flex;align-items:center;justify-content:center;width:22px;height:20px;padding:0;margin:0 -4px 0 2px;font-size:0;letter-spacing:0;border-radius:10px}
@@ -87,7 +88,7 @@
 .pbtns button .ic{width:16px;height:16px;vertical-align:-3px}
 .pcam{font-size:0}.pcam .ic{width:14px;height:14px;margin:0}
 .psub .ic.fil{fill:currentColor;stroke:none;color:var(--warn,#f5b301)}
-.psub .pdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7b8794;margin-right:5px;vertical-align:1px}.psub .pdot.on{background:#3ddc84}
+.psub .pdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7b8794;margin-right:5px;vertical-align:1px}.psub .pdot.on{background:#3ddc84}.psub .pdot.bg{background:#f5b942}
 .pst .ic{vertical-align:-3px}
 
 /* ---- Tautan web di chat (v0.25.1): chip ringkas + tombol salin; peramban dalam aplikasi ---- */
@@ -106,8 +107,30 @@ a.lnk .lp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 
 .webbr{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;background:var(--bg);color:var(--fg)}
 .webbr[hidden]{display:none}
+/* Penampil situs Web Lokal (F.2): memakai kelas .webbr/.wbbar/.wbb/.wbt di atas. Nama pemilik selalu tampil di baris alamat (tidak bisa diubah situs). */
+.sitebr #sbtop{flex:none;position:relative}
+.sbframe{flex:1;min-height:0;position:relative;background:var(--bg)}
+.sbframe[hidden]{display:none}
+.sbframe iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;color-scheme:light}
+.sbo{margin-left:8px;font-size:12px;font-weight:500;color:var(--dim)}
+.sbconf{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--line);font-size:13px}
+.sbconf[hidden]{display:none}
+.sbpw{background:var(--hover);font-weight:500}
+.sbct{flex:1;min-width:140px;overflow-wrap:anywhere}
+.sbcb{min-height:36px;padding:0 14px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;cursor:pointer}
+.sbcb.sec{background:var(--hover);color:var(--fg)}
+.sbcb:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+/* G.2: halaman peringatan pertama kali (menggantikan isi situs; situsnya belum dibuka) */
+.sbwarn{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:20px;overflow:auto;background:var(--bg)}
+.sbwarn[hidden]{display:none}
+.sbwbox{max-width:440px;width:100%;text-align:center}
+.sbwbox h2{margin:0 0 10px;font-size:18px}
+.sbwbox p{margin:0 0 10px;line-height:1.45;overflow-wrap:anywhere}
+.sbwbox .sbwo{font-size:13px;color:var(--dim)}
+.sbwbtn{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:16px}
 .wbbar{flex:none;display:flex;align-items:center;gap:2px;height:48px;padding:0 6px;box-sizing:border-box;background:var(--surface);border-bottom:1px solid var(--line)}
 .wbb{flex:none;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;min-height:40px;padding:0;border:0;border-radius:50%;background:transparent;color:var(--fg);font-size:0;cursor:pointer}
+.wbb[hidden]{display:none}
 .wbb:hover:not(:disabled){background:var(--hover)}
 .wbb:disabled{opacity:.35;cursor:default}
 .wbb:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}

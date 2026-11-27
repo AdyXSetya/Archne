@@ -32,7 +32,9 @@ function registerDirect({ ipcMain, core, deps, toRenderer, log, settingsOut = (r
     if (!deps.pickItems) return [];
     try {
       const r = await deps.pickItems(kind === 'folder' ? 'folder' : 'files');
-      return Array.isArray(r) ? r.filter((x) => typeof x === 'string' && path.isAbsolute(x)).slice(0, MAX_PATHS) : [];
+      const l = Array.isArray(r) ? r.filter((x) => typeof x === 'string' && path.isAbsolute(x)).slice(0, MAX_PATHS) : [];
+      if (deps.pathGuard) deps.pathGuard.grantAll(l);
+      return l;
     } catch (e) { log('dxPick ' + e.message); return []; }
   });
 
@@ -43,6 +45,7 @@ function registerDirect({ ipcMain, core, deps, toRenderer, log, settingsOut = (r
     if (typeof to !== 'string' || !to) return { ok: false, err: 'tujuan tidak valid', code: 'bad' };
     if (!Array.isArray(paths) || !paths.length || paths.length > MAX_PATHS) return { ok: false, err: 'pilih 1–' + MAX_PATHS + ' berkas/folder', code: 'bad' };
     if (!paths.every((p) => typeof p === 'string' && path.isAbsolute(p))) return { ok: false, err: 'path harus absolut', code: 'bad' };
+    if (deps.pathGuard && !paths.every((p) => deps.pathGuard.has(p))) return { ok: false, err: 'path tidak dipilih lewat dialog', code: 'bad' };
     if (jobs.size >= MAX_JOBS) return { ok: false, err: 'terlalu banyak pekerjaan', code: 'busy' };
     const j = { job, to, ac: new AbortController() };
     jobs.set(job, j);

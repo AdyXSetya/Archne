@@ -82,14 +82,25 @@ function mmOpen(id, anchor, align) {
   mmMark();
   if (!sheet) { const f = el.querySelector('.mmi:not(:disabled)'); if (f) f.focus(); } // papan ketik: panah + Enter
 }
+// Salin teks ke papan klip: Clipboard API dulu, lalu cadangan execCommand (konteks tanpa izin / http biasa). Mengembalikan true bila berhasil.
+async function copyText(t) {
+  t = String(t == null ? '' : t);
+  try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(t); return true; } } catch (x) {}
+  let ta = null;
+  try {
+    const prev = document.activeElement;
+    ta = document.createElement('textarea'); ta.value = t; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;left:0;top:0;pointer-events:none';
+    document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, t.length);
+    const ok = document.execCommand('copy');
+    if (prev && typeof prev.focus === 'function') { try { prev.focus(); } catch (x) {} }
+    return !!ok;
+  } catch (x) { return false; }
+  finally { if (ta && ta.parentNode) ta.parentNode.removeChild(ta); }
+}
 async function mmCopy(t, what) {
   const lbl = what || txf('copy.text', 'Teks'), done = txf('copy.done', '{what} disalin', { what: lbl });
-  try { await navigator.clipboard.writeText(t); toast(done, true); return; } catch (x) {}
-  try { // cadangan untuk konteks tanpa Clipboard API
-    const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'position:fixed;opacity:0;left:0;top:0';
-    document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); document.body.removeChild(ta);
-    toast(ok ? done : txf('copy.fail', 'Gagal menyalin'), ok);
-  } catch (x) { toast(txf('copy.fail', 'Gagal menyalin')); }
+  const ok = await copyText(t);
+  toast(ok ? done : txf('copy.fail', 'Gagal menyalin'), ok);
 }
 async function mmAct(act, id) {
   const m = mmMsg(id); if (!m) return;

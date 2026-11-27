@@ -95,6 +95,13 @@ module.exports = {
       for (const p of this.peers.values()) if (this.isOnline(p)) this._syncFrom(p);
     }, 200);
   },
+  // Ada pesan/pemberitahuan keluar yang masih menunggu untuk peer ini (DM atau anggota grup)? Dipakai untuk membangunkan peer yang hadir tetapi link-nya mati.
+  _pendingTo(id) {
+    const M = this.store.msgs;
+    for (const [mid, st] of Object.entries(this.store.status)) if (st === 'pending' && M[mid] && M[mid].to === id) return true;
+    for (const [mid, gs] of Object.entries(this.store.gstatus)) if (gs && gs[id] === 'pending' && M[mid]) return true;
+    return false;
+  },
   _kick(ids) {
     for (const id of ids) { const p = this.peers.get(id); if (this.isOnline(p)) this._flushOutbox(p); }
   },

@@ -10,7 +10,7 @@ function render() {
   $('myaddr').textContent = ad.length ? '📋 ' + ad[0].addr + (ad.length > 1 ? ' +' + (ad.length - 1) : '') : '';
   $('meav').innerHTML = avHtml(S.me.id || '0', 'md');
   $('myname').textContent = S.me.name || '';
-  const peers = [...S.peers].sort((a, b) => (b.online - a.online) || a.name.localeCompare(b.name));
+  const peers = [...S.peers].sort((a, b) => (b.online - a.online) || (!!b.bg - !!a.bg) || a.name.localeCompare(b.name));
   // Kiri: tiga tab (Publik, Grup, Teman); hanya daftar tab yang aktif yang tampil, jadi tidak perlu scroll panjang.
   // Kanan: daftar orang menurut chat yang dibuka (publik = semua user, grup = anggota, DM = tidak ada).
   if (!emptyTab) tab = tabOf(cur);
@@ -39,7 +39,7 @@ function render() {
   } else {
     const { friends, incoming, outgoing, others } = dmLists();
     // permintaan masuk/terkirim: klik membuka profil (di sana Terima/Tolak/Batalkan), bukan chat
-    const row = (p, note) => rowH(p.id, `<span class="avw">${avHtml(p.id, 'md')}<span class="dot ${p.online ? 'on' : ''}"></span></span>`, esc(tag(p.name, p.id)), note || prevOf(p.id) || (p.online ? txf('peer.online', 'Online') : txf('peer.offline', 'Offline')), note);
+    const row = (p, note) => rowH(p.id, `<span class="avw">${avHtml(p.id, 'md')}<span class="dot ${p.online ? 'on' : p.bg ? 'bg' : ''}"></span></span>`, esc(tag(p.name, p.id)), note || prevOf(p.id) || (p.online ? txf('peer.online', 'Online') : p.bg ? txf('peer.onlineBg', 'Online di latar') : txf('peer.offline', 'Offline')), note);
     h = friends.map((p) => row(p)).join('')
       + (incoming.length ? '<div class="sect">' + txf('list.reqIn', 'Permintaan teman') + '</div>' + incoming.map((p) => row(p, txf('list.wantsFriend', 'Ingin berteman'))).join('') : '')
       + (outgoing.length ? '<div class="sect">' + txf('list.reqOut', 'Menunggu persetujuan') + '</div>' + outgoing.map((p) => row(p, txf('list.waiting', 'Menunggu'))).join('') : '')
@@ -54,14 +54,14 @@ function render() {
   $('users').style.display = showUsers ? 'flex' : 'none';
   if (showUsers) {
     // Tanpa baris diri sendiri; dikelompokkan: (Grup) Pemilik, Admin, lalu Teman dan Tidak dikenal. Bagian kosong disembunyikan.
-    const byName = (x, y) => (y.online - x.online) || String(x.name).localeCompare(String(y.name));
-    const rows = (cur === 'public' ? peers.map((p) => ({ id: p.id, name: p.name, online: !!p.online }))
-      : grp.members.filter((x) => x.id !== S.me.id && !bl.has(x.id)).map((x) => { const p = S.peers.find((q) => q.id === x.id); return { id: x.id, name: p ? p.name : x.name, online: !!(p && p.online) }; }))
+    const byName = (x, y) => (y.online - x.online) || (!!y.bg - !!x.bg) || String(x.name).localeCompare(String(y.name));
+    const rows = (cur === 'public' ? peers.map((p) => ({ id: p.id, name: p.name, online: !!p.online, bg: !!p.bg }))
+      : grp.members.filter((x) => x.id !== S.me.id && !bl.has(x.id)).map((x) => { const p = S.peers.find((q) => q.id === x.id); return { id: x.id, name: p ? p.name : x.name, online: !!(p && p.online), bg: !!(p && p.bg) }; }))
       .map((r) => Object.assign(r, { creator: !!grp && r.id === grp.creator, admin: !!grp && r.id !== grp.creator && (grp.admins || []).includes(r.id), friend: isFriendId(r.id) })).sort(byName);
     const q = $('usearch').value, shown = rows.filter((r) => matchUser(r.name, r.id, q));
     const uLabel = cur === 'public' ? txf('users.all', 'Semua user') : txf('users.groupMembers', 'Anggota grup'), uOn = rows.filter((r) => r.online).length;
     $('uhead').textContent = q.trim() ? txf('users.headMatch', '{label} · {on}/{total} online · cocok {n}', { label: uLabel, on: uOn, total: rows.length, n: shown.length }) : txf('users.head', '{label} · {on}/{total} online', { label: uLabel, on: uOn, total: rows.length });
-    const urow = (r) => `<div class="urow" data-uid="${r.id}" title="${txf('users.rowTitle', 'Klik untuk melihat profil')}"><span class="dot ${r.online ? 'on' : ''}"></span>${avHtml(r.id, true)}<div class="uc"><div class="nm" style="color:${color(r.id || '0')}"><span class="nt">${esc(r.name || '?')}<span class="tg"> #${(r.id || '').slice(0, 6)}</span></span>${badgesOf(r.id, grp)}</div><div class="bs">${esc(bioOf(r.id))}</div></div></div>`;
+    const urow = (r) => `<div class="urow" data-uid="${r.id}" title="${txf('users.rowTitle', 'Klik untuk melihat profil')}"><span class="dot ${r.online ? 'on' : r.bg ? 'bg' : ''}"></span>${avHtml(r.id, true)}<div class="uc"><div class="nm" style="color:${color(r.id || '0')}"><span class="nt">${esc(r.name || '?')}<span class="tg"> #${(r.id || '').slice(0, 6)}</span></span>${badgesOf(r.id, grp)}</div><div class="bs">${esc(bioOf(r.id))}</div></div></div>`;
     const secs = [['Pemilik', txf('badge.owner', 'Pemilik'), shown.filter((r) => r.creator)], ['Admin', txf('badge.admin', 'Admin'), shown.filter((r) => r.admin)], ['Teman', txf('badge.friend', 'Teman'), shown.filter((r) => !r.creator && !r.admin && r.friend)], ['Tidak dikenal', txf('users.unknown', 'Tidak dikenal'), shown.filter((r) => !r.creator && !r.admin && !r.friend)]]; // x[0] = penanda tetap (data-usec), x[1] = label tampil
     $('ulist').innerHTML = !shown.length ? `<div class="empty">${q.trim() ? txf('users.noMatch', 'Tidak ada yang cocok dengan "{q}".', { q: esc(q.trim()) }) : txf('users.empty', 'Belum ada orang lain di sini.')}</div>`
       : secs.filter((x) => x[2].length).map((x) => `<div class="usec" data-usec="${x[0]}">${x[1]} · ${x[2].length}</div>` + x[2].map(urow).join('')).join('');
@@ -73,7 +73,7 @@ function render() {
   else {
     hav = avHtml(cur, 'md');
     ttl = '<span class="plink" data-uid="' + esc(cur) + '" title="' + txf('common.viewProfile', 'Lihat profil') + '">' + esc(peer ? tag(peer.name, peer.id) : cur) + '</span>';
-    sub = !peer ? '' : (peer.online ? txf('peer.online', 'Online') : txf('peer.offlineHeld', 'Offline, pesan ditahan')) + (peer.secure ? ' · <span title="' + txf('enc.e2e', 'Terenkripsi end-to-end') + '" role="img" aria-label="' + txf('enc.aria', 'Terenkripsi') + '">' + icn('lock') + '</span>' : ' · <span title="' + txf('enc.oldTitle', 'Versi lama, belum terenkripsi') + '" role="img" aria-label="' + txf('enc.oldAria', 'Belum terenkripsi') + '">' + icn('warn', 'warn') + ' ' + txf('enc.oldTag', 'versi lama') + '</span>');
+    sub = !peer ? '' : (peer.online ? txf('peer.online', 'Online') : peer.bg ? (S.wan && S.wan.mbox ? txf('peer.onlineBgMbox', 'Online di latar, pesan dititipkan') : txf('peer.onlineBgHeld', 'Online di latar, pesan menunggu dia membuka aplikasi')) : txf('peer.offlineHeld', 'Offline, pesan ditahan')) + (peer.secure ? ' · <span title="' + txf('enc.e2e', 'Terenkripsi end-to-end') + '" role="img" aria-label="' + txf('enc.aria', 'Terenkripsi') + '">' + icn('lock') + '</span>' : ' · <span title="' + txf('enc.oldTitle', 'Versi lama, belum terenkripsi') + '" role="img" aria-label="' + txf('enc.oldAria', 'Belum terenkripsi') + '">' + icn('warn', 'warn') + ' ' + txf('enc.oldTag', 'versi lama') + '</span>');
   }
   const hb = (id, ic, t) => `<button id="${id}" type="button" class="ibtn" title="${t}" aria-label="${t}">${ic}</button>`;
   $('head').innerHTML = hb('sidebtn', IC.back, txf('head.back', 'Kembali ke daftar chat')) + `<div class="hav">${hav}</div><div class="hti"><div class="ttl">${ttl}</div><div class="sub">${sub}</div></div>`
@@ -132,10 +132,13 @@ function render() {
     // Status kirim: centang = sampai, jam = menunggu (grup: berapa penerima yang sudah). Ikon + title, bukan huruf.
     const stOk = mine && (m.gs ? m.gs.done === m.gs.total : m.status === 'delivered');
     const st = !mine ? '' : m.gs ? (stOk ? icn('check') : icn('clock') + ` ${m.gs.done}/${m.gs.total}`) : m.status ? (stOk ? icn('check') : icn('clock')) : '';
-    const stT = stOk ? txf('msg.delivered', 'Terkirim') : m.gs ? txf('msg.deliveredTo', 'Terkirim ke {done} dari {total}', { done: m.gs.done, total: m.gs.total }) : txf('msg.pending', 'Menunggu diterima');
+    const mb = mine && !stOk && !m.gs ? m.mb : null; // 4e: lapisan kotak surat (hanya DM yang tertahan)
+    const stI = mb === 'deposited' ? icn('mail') : mb === 'failed' ? icn('warn') : st;
+    const stT0 = stOk ? txf('msg.delivered', 'Terkirim') : m.gs ? txf('msg.deliveredTo', 'Terkirim ke {done} dari {total}', { done: m.gs.done, total: m.gs.total }) : txf('msg.pending', 'Menunggu diterima');
+    const stT = mb === 'queued' ? txf('msg.mbQueued', 'Menunggu dititipkan ke broker') : mb === 'deposited' ? txf('msg.mbDeposited', 'Dititipkan di broker, menunggu penerima online') : mb === 'failed' ? txf(m.mbwhy === 'toobig' ? 'msg.mbTooBig' : 'msg.mbFailed', m.mbwhy === 'toobig' ? 'Terlalu besar untuk dititipkan. Tetap terkirim langsung saat penerima online' : 'Titipan kedaluwarsa. Ketuk untuk menitipkan lagi') : stT0;
     const rq = !m.reply ? '' : m.reply.gone ? '<div class="rq gone"><div class="rt">' + icn('reply') + ' ' + txf('msg.replyGone', 'Pesan asli sudah tidak ada') + '</div></div>'
       : `<div class="rq" data-goto="${esc(m.reply.id)}" title="${txf('msg.replyJump', 'Lompat ke pesan asli')}"><div class="rn" style="color:${color(m.reply.from)}">${esc(m.reply.from === S.me.id ? txf('chat.you', 'Kamu') : tag(m.reply.name, m.reply.from))}</div><div class="rt">${esc(lnkShort(m.reply.text))}</div></div>`;
-    return sep + `<div class="m ${mine ? 'me' : ''}${cont ? ' cont' : ''}${m.rx && m.rx.length ? ' hasrx' : ''}${flashId === m.id && Date.now() < flashUntil ? ' flash' : ''}" data-mid="${m.id}"><div class="who lk" data-uid="${esc(m.from)}" title="${txf('common.viewProfile', 'Lihat profil')}" style="color:${color(m.from)}">${esc(tag(m.name, m.from))}${mine ? '' : badgesOf(m.from, grp)}</div>${rq}${m.file ? FileCard.cardHtml(m, prog, { senderOnline: (S.peers.find((p) => p.id === m.from) || {}).online }) : bodyHtml(m)}${rxH(m)}<div class="t">${hm(m.ts)}${st ? `<span class="st${stOk ? ' ok' : ''}" title="${stT}" role="img" aria-label="${stT}">${st}</span>` : ''}${typeof rxOk === 'function' && rxOk(m) ? `<button type="button" class="mmore mmreact" data-menu="${m.id}" title="${txf('msg.react', 'Beri reaksi')}" aria-label="${txf('msg.react', 'Beri reaksi')}" aria-haspopup="menu">${IC.smile}</button>` : ''}<button type="button" class="mmore" data-menu="${m.id}" title="${txf('mmenu.aria', 'Aksi pesan')}" aria-label="${txf('mmenu.aria', 'Aksi pesan')}" aria-haspopup="menu">${IC.more}</button></div></div>`;
+    return sep + `<div class="m ${mine ? 'me' : ''}${cont ? ' cont' : ''}${m.rx && m.rx.length ? ' hasrx' : ''}${flashId === m.id && Date.now() < flashUntil ? ' flash' : ''}" data-mid="${m.id}"><div class="who lk" data-uid="${esc(m.from)}" title="${txf('common.viewProfile', 'Lihat profil')}" style="color:${color(m.from)}">${esc(tag(m.name, m.from))}${mine ? '' : badgesOf(m.from, grp)}</div>${rq}${m.file ? FileCard.cardHtml(m, prog, { senderOnline: (S.peers.find((p) => p.id === m.from) || {}).online }) : bodyHtml(m)}${rxH(m)}<div class="t">${hm(m.ts)}${st ? `<span class="st${stOk ? ' ok' : ''}${mb === 'failed' ? ' err' : ''}"${mb === 'failed' && m.mbwhy !== 'toobig' ? ` data-mbretry="${m.id}" role="button" tabindex="0"` : ' role="img"'} title="${stT}" aria-label="${stT}">${stI}</span>` : ''}${typeof rxOk === 'function' && rxOk(m) ? `<button type="button" class="mmore mmreact" data-menu="${m.id}" title="${txf('msg.react', 'Beri reaksi')}" aria-label="${txf('msg.react', 'Beri reaksi')}" aria-haspopup="menu">${IC.smile}</button>` : ''}<button type="button" class="mmore" data-menu="${m.id}" title="${txf('mmenu.aria', 'Aksi pesan')}" aria-label="${txf('mmenu.aria', 'Aksi pesan')}" aria-haspopup="menu">${IC.more}</button></div></div>`;
   }).join('') + FileCard.jobsFor(S.sending, cur).map((j) => `<div class="m me">${FileCard.jobHtml(j, prog)}</div>`).join('');
   if (stick) box.scrollTop = box.scrollHeight;
   renderProfile();

@@ -13,7 +13,7 @@ const { CALL_CID, CALL_LOG_MAX, CALL_MAX_PEERS, CALL_OUT, HEX16, HEX32, HLC_DRIF
 const readJson = (f) => { try { const j = JSON.parse(fs.readFileSync(f, 'utf8')); return j && typeof j === 'object' && !Array.isArray(j) ? j : null; } catch { return null; } };
 const writeJson = (f, obj, bak) => {
   const s = JSON.stringify(obj);
-  fs.writeFileSync(f + '.tmp', s);
+  fs.writeFileSync(f + '.tmp', s, { mode: 0o600 }); // data obrolan: hanya pemilik akun OS yang boleh membaca (diabaikan di Windows)
   if (bak) { try { fs.copyFileSync(f, f + '.bak'); } catch {} } // salinan versi sebelumnya: primer rusak tidak boleh berarti hilang
   fs.renameSync(f + '.tmp', f);
 };
@@ -24,8 +24,17 @@ const segPath = (dir, id) => path.join(dir, id.slice(0, 2), id + '.json');
 module.exports = {
   _loadIdentity() {
     const f = path.join(this.opts.dataDir, 'identity.json');
-    let j;
-    try { j = JSON.parse(fs.readFileSync(f, 'utf8')); } catch {}
+    let j, raw = null;
+    try { raw = fs.readFileSync(f, 'utf8'); } catch {}
+    if (raw !== null) {
+      try { j = JSON.parse(raw); } catch {}
+      if (!j || typeof j.priv !== 'string' || typeof j.pub !== 'string') {
+        // identity.json ada tetapi rusak (mis. mati listrik saat menulis): JANGAN diam-diam diganti identitas baru (kunci lama hilang selamanya). Simpan dulu sebagai berkas .corrupt.
+        j = null;
+        try { fs.renameSync(f, f + '.corrupt-' + Date.now()); if (this.log) this.log('identity.json rusak: disimpan sebagai .corrupt-*, identitas baru dibuat'); } catch {}
+      }
+    }
+    this._idFresh = !j; // true = identitas baru dibuat pada start ini (dicatat di log "core start": id yang berganti tiap start berarti identity.json tidak terbaca)
     if (!j) {
       const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
       j = {
@@ -37,8 +46,11 @@ module.exports = {
       const x = crypto.generateKeyPairSync('x25519');
       j.xpub = x.publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
       j.xpriv = x.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64');
-      fs.writeFileSync(f, JSON.stringify(j), { mode: 0o600 });
+      const tmp = f + '.tmp';
+      fs.writeFileSync(tmp, JSON.stringify(j), { mode: 0o600 });
+      fs.renameSync(tmp, f); // atomik: tidak pernah ada identity.json setengah tertulis
     }
+    if (process.platform !== 'win32') { try { fs.chmodSync(f, 0o600); } catch {} } // berkas lama yang terlanjur dibuat longgar
     this.pub = j.pub;
     this.privKey = crypto.createPrivateKey({ key: Buffer.from(j.priv, 'base64'), format: 'der', type: 'pkcs8' });
     this.id = idFromPub(this.pub);

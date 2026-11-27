@@ -8,8 +8,10 @@
 //                            sama dengan jalur biasa (/rpc/.., /events, /upload, berkas UI).
 //   GET  /<berkas UI>     -> isi folder renderer/ (perlu cookie)
 //   POST /rpc/<nama>      -> badan JSON = larik argumen; balasan JSON = hasil handler archne-ipc.js
-//   GET  /events          -> Server-Sent Events: update | removed | fprog | dxprog | pgdl | pgcq | pgnew | pgarc | dxscan | call | vcpres | pvpres | pvkick | rtcb (| notify, bila canNotify)
+//   GET  /events          -> Server-Sent Events: update | removed | fprog | dxprog | pgdl | pgcq | pgnew | pgarc | dxscan | webprog | webzip | weboff | sitestate | call | vcpres | pvpres | pvkick | rtcb (| notify, bila canNotify | wake, langkah 3e, hanya dari cangkang Android)
 //   POST /upload?name=... -> badan mentah (berkas) disimpan ke <dataDir>/shared; balasan { path }
+//   Host <siteId>.lw.localhost:PORT -> situs Web Lokal (0.34.0 F.3.3a), dilayani src/archne-siteserver.js di port yang sama. Diputus lewat Host SEBELUM token / cookie dan
+//                            tidak pernah menjangkau rute di atas. Dibuka lewat IPC siteOpen (src/archne-sitesession.js, F.3.3b); status = kejadian `sitestate`.
 //
 // Keamanan: hanya mendengarkan 127.0.0.1 (kecuali host diubah sengaja), token acak, cookie HttpOnly+SameSite=Strict,
 // pemeriksaan header Host (menahan DNS rebinding) dan POST wajib application/json (menahan CSRF lintas situs).
@@ -19,6 +21,9 @@ const path = require('path');
 const crypto = require('crypto');
 const { register, isRisky } = require('./archne-ipc');
 const I18N = require('./core/archne-i18n-node'); // i18n (E10)
+const { createSiteHost } = require('./archne-siteserver');
+const { createSiteSession } = require('./archne-sitesession');
+const LW_SUFFIX = /\.lw\.localhost(:[0-9]*)?$/i;
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json', '.wasm': 'application/wasm' };
 const JOBID = /^[A-Za-z0-9_-]{1,40}$/;
@@ -55,7 +60,13 @@ function createRpc(opts) {
   const sendOut = opts.canNotify
     ? (ch, p) => broadcast(ch, ch === 'call' && p && p.ev === 'incoming' ? Object.assign({}, p, { av: core.avatarOf(p.peer) }) : p)
     : broadcast;
-  const ipc = register({ ipcMain, core, log, send: sendOut, shell, pickFiles: async () => [], rtcBase64: true, pickSave: opts.pickSave, pickArc: opts.pickArc }); // pickSave / pickArc: cadangan Halaman (Android: tanpa dialog Electron, lihat mobile/shell/main.js) // byte jembatan lintas jaringan lewat JSON: base64
+  // Pelayan situs (0.34.0 F.3.3a): satu port dengan UI, dipisah lewat Host. Dibuka lewat `site` (src/archne-sitesession.js, F.3.3b) yang dipanggil IPC siteOpen/siteRefresh/siteClose; sesi memasang `cur` ke siteHost.
+  // Penyemat yang diizinkan = origin UI (127.0.0.1 dan localhost, port ini); opts.siteAncestors menggantinya (mis. mode LAN).
+  const siteHost = createSiteHost({ core, getPort: () => port, log, ancestors: opts.siteAncestors || ((p) => ['http://127.0.0.1:' + p, 'http://localhost:' + p]) });
+
+  // nama pemilik di bilah selalu dari Core; status sesi dikirim sebagai kejadian 'sitestate' (SSE)
+  const site = createSiteSession({ core, siteHost, log, php: opts.php || null, nameOf: (id) => { const p = core.peers.get(id); return p && p.name ? p.name : ''; }, send: (st) => sendOut('sitestate', st) });
+  const ipc = register({ ipcMain, core, log, site, getPhpHost: () => opts.php || null, send: sendOut, shell, pickFiles: async () => [], rtcBase64: true, pickSave: opts.pickSave, pickArc: opts.pickArc, metrics: opts.metrics, getCron: () => opts.cron || null }); // getCron: layanan cron (C6, hanya pemilik; null = tanpa cron). pickSave / pickArc: cadangan Halaman (Android: tanpa dialog Electron, lihat mobile/shell/main.js) // byte jembatan lintas jaringan lewat JSON: base64
 
   // Setelah tawaran terkirim: salinan unggahan hanya boleh dihapus bila Core sudah membuat salinan sendiri (staged).
   // Kalau tidak, Core masih membaca berkas ini untuk mengirim ke penerima nanti.
@@ -129,6 +140,10 @@ function createRpc(opts) {
 
   async function onRequest(req, res) {
     try {
+      // Situs Web Lokal: Host `<siteId>.lw.localhost:PORT` diputus SEBELUM pemeriksaan token / cookie / rute UI, dan tidak pernah turun ke bawah. Situs tidak membawa
+      // cookie `lc` (cookie UI host-only untuk 127.0.0.1 / localhost) dan tidak bisa menjangkau /rpc, /events, /upload, maupun berkas UI.
+      if (siteHost.isSiteHost(req)) return siteHost.handle(req, res);
+      if (LW_SUFFIX.test(String(req.headers.host || ''))) return deny(res, 403, 'host tidak dikenal'); // berakhiran .lw.localhost tapi bukan bentuk situs: jangan sampai lolos hostOk di mode LAN
       if (!hostOk(req)) return deny(res, 403, 'host tidak dikenal');
       const url = new URL(req.url, 'http://x');
 
@@ -194,10 +209,12 @@ function createRpc(opts) {
       if (req.method === 'POST' && url.pathname === '/upload') {
         if (!/^application\/octet-stream/.test(req.headers['content-type'] || '')) return deny(res, 415, 'wajib application/octet-stream');
         await fs.promises.mkdir(sharedDir, { recursive: true, mode: 0o700 });
-        const dest = path.join(sharedDir, crypto.randomBytes(6).toString('hex') + '-' + safeName(url.searchParams.get('name')));
+        const rnd = crypto.randomBytes(6).toString('hex'), keepName = url.searchParams.get('keep') === '1'; // keep=1 (unggah ke Web Lokal): nama asli dipertahankan, keunikan lewat subfolder acak
+        const holder = keepName ? path.join(sharedDir, rnd) : null, dest = keepName ? path.join(holder, safeName(url.searchParams.get('name'))) : path.join(sharedDir, rnd + '-' + safeName(url.searchParams.get('name')));
+        if (holder) await fs.promises.mkdir(holder, { recursive: true, mode: 0o700 });
         const ws = fs.createWriteStream(dest, { mode: 0o600 });
         await new Promise((resolve, reject) => { req.pipe(ws); ws.on('finish', resolve); ws.on('error', reject); req.on('error', reject); req.on('aborted', () => reject(new Error('dibatalkan'))); })
-          .catch(async (e) => { ws.destroy(); await fs.promises.rm(dest, { force: true }).catch(() => {}); throw e; });
+          .catch(async (e) => { ws.destroy(); await fs.promises.rm(holder || dest, { recursive: true, force: true }).catch(() => {}); throw e; });
         res.writeHead(200, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({ path: dest }));
       }
@@ -219,7 +236,7 @@ function createRpc(opts) {
   }
 
   return {
-    handlers, token,
+    handlers, token, siteHost, site,
     get port() { return port; },
     url: () => `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}/?t=${token}`,
     sessionUrl: () => `http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}/s/${token}/`,
@@ -227,7 +244,7 @@ function createRpc(opts) {
       // bersihkan unggahan sisa sesi lalu yang tidak lagi dirujuk Core
       try {
         const keep = new Set(Object.values(core.store.files || {}).map((f) => f && f.path).filter(Boolean).map((p) => path.resolve(p)));
-        for (const f of await fs.promises.readdir(sharedDir).catch(() => [])) { const p = path.resolve(sharedDir, f); if (!keep.has(p)) await fs.promises.rm(p, { force: true }).catch(() => {}); }
+        for (const f of await fs.promises.readdir(sharedDir).catch(() => [])) { const p = path.resolve(sharedDir, f); if (!keep.has(p)) await fs.promises.rm(p, { recursive: true, force: true }).catch(() => {}); }
       } catch {}
       server = http.createServer(onRequest);
       await new Promise((resolve, reject) => { server.once('error', reject); server.listen(opts.port || 0, host, () => { server.removeListener('error', reject); resolve(); }); });
@@ -236,6 +253,8 @@ function createRpc(opts) {
     },
     async stop() {
       try { ipc.dispose(); } catch {}
+      try { site.dispose(); } catch {}
+      siteHost.clear(); // jar cookie situs dibuang bersama server
       for (const r of clients) { try { r.end(); } catch {} }
       clients.clear();
       if (server) await new Promise((r) => server.close(() => r()));
